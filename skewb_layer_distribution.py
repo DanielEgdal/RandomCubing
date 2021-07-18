@@ -117,7 +117,6 @@ def dist():
                         for kk, k in enumerate(overview):
                             print(kk,len(k))
     return overview
-
 def layercheck(cpos):
     if cpos[0] == 'W':
         if cpos[6] == 'W' and cpos[7] == 'W' and cpos[8] == 'W' and cpos[9] == 'W' and cpos[10] == 'G':
@@ -128,15 +127,39 @@ def layercheck(cpos):
     if cpos[2] == 'R':
         if cpos[14] == 'R' and cpos[15] == 'R' and cpos[16] == 'R' and cpos[17] == 'R' and cpos[7] == 'W':
             return True
-    if cpos[3] == 'B':
-        if cpos[18] == 'B' and cpos[19] == 'B' and cpos[20] == 'B' and cpos[21] == 'B' and cpos[7] == 'W':
-            return True
-    if cpos[4] == 'O':
-        if cpos[22] == 'O' and cpos[23] == 'O' and cpos[24] == 'O' and cpos[25] == 'O' and cpos[9] == 'W':
-            return True
-    if cpos[5] == 'Y':
-        if cpos[26] == 'Y' and cpos[27] == 'Y' and cpos[28] == 'Y' and cpos[29] == 'Y' and cpos[12] == 'G':
-            return True
+    b = cpos[3]
+    o = cpos[4]
+    y = cpos[5]
+    if cpos[18] == b and cpos[19] == b and cpos[20] == b and cpos[21] == b:
+        if b == 'B':
+            if cpos[7] == 'W':
+                return True
+        if b == 'O':
+            if cpos[7] == 'G':
+                return True
+        if b == 'Y':
+            if cpos[7] == 'R':
+                return True
+    if cpos[22] == o and cpos[23] == o and cpos[24] == o and cpos[25] == o:
+        if o == 'O':
+            if cpos[9] == 'W':
+                return True
+        if o == 'Y':
+            if cpos[9] == 'G':
+                return True
+        if o == 'B':
+            if cpos[9] == 'R':
+                return True
+    if cpos[26] == y and cpos[27] == y and cpos[28] == y and cpos[29] == y:
+        if y == 'Y':
+            if cpos[12] == 'G':
+                return True
+        if y == 'B':
+            if cpos[12] == 'R':
+                return True
+        if y == 'O':
+            if cpos[12] == 'W':
+                return True
     else:
         return False
 
