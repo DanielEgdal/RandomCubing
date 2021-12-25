@@ -7,7 +7,8 @@ import random
 import math
 import numpy as np
 import pandas as pd
-from typing import Dict, Generic, Iterator, List, Optional, TypeVar
+from typing import Dict, Generic, Iterator, List, Optional, TypeVar # For the priority queue
+from fpdf import FPDF # For pdfs
 
 Key = TypeVar("Key")
 
@@ -110,6 +111,7 @@ class Competitor():
 
 class Schedule():
     def __init__(self):
+        self.name = ''
         self.events = [] # list of lists. Inner lists have three values: Event name, s time, and e time of r1.
         self.eventWOTimes = []
         self.eventTimes = {} # event -> touple of start and end time
@@ -217,6 +219,7 @@ def scheduleBasicInfo(data,personInfo,organizers,stations,customGroups=[False], 
     if combinedEvents==None:
         combinedEvents = ('k','k')
     schedule = Schedule()
+    schedule.name = data['id']
     already_there = set()
     tempFm = [] # not used for its purpose in the end
     tempMb = [] # not used for its purpose in the end
@@ -321,25 +324,25 @@ def getGroupCount(scheduleInfo,fixedSeating,stationCount,custom=[False],just1=[F
         for event in custom:
             scheduleInfo.groups[event] = {}
             for amount in range(1,custom[event]+1):
-                scheduleInfo.groups[event][amount] = set()
+                scheduleInfo.groups[event][amount] = []
     if just1[0]:
         for event in just1:
             if event in scheduleInfo.eventWOTimes:
                 scheduleInfo.groups[event] = {}
-                scheduleInfo.groups[event][1] = set()
+                scheduleInfo.groups[event][1] = []
     if fixedSeating:
         for event in scheduleInfo.eventCompetitors:
             if event not in just1 and event not in custom:
                 scheduleInfo.groups[event] = {}
                 for amount in range(1,math.ceil(len(scheduleInfo.eventCompetitors[event])/stationCount) +1):
-                    scheduleInfo.groups[event][amount] = set()
+                    scheduleInfo.groups[event][amount] = []
     else:
         # stationCount *=1.15
         for event in scheduleInfo.eventCompetitors:
             if event not in just1:
                 scheduleInfo.groups[event] = {}
                 for amount in range(1,(np.max([math.floor(len(scheduleInfo.eventCompetitors[event])/stationCount) +1,3]))):
-                    scheduleInfo.groups[event][amount] = set()
+                    scheduleInfo.groups[event][amount] = []
     
 def splitNonOverlapGroups(scheduleInfo,personInfo,event,scramblerCount):
     """
@@ -354,11 +357,11 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,scramblerCount):
         i = 0
         for groupNum in range(1,len(groups)+1):
             while perGroup*(groupNum) > i:
-                groups[groupNum].add(totalComp[i])
+                groups[groupNum].append(totalComp[i])
                 personInfo[totalComp[i]].groups[event] = groupNum
                 i+=1
         if i < len(totalComp): # If some people were somehow left out, add them in the last group
-            groups[groupNum].add(totalComp[i])
+            groups[groupNum].append(totalComp[i])
             personInfo[totalComp[i]].groups[event] = groupNum
             i+=1
     else:
@@ -367,13 +370,13 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,scramblerCount):
         for groupNum in range(1,len(groups)+1):
             for _ in range(1,scramblerCount+1):
                 # Take the x best people yet to be assigned into group
-                groups[groupNum].add(totalComp[sCount])
+                groups[groupNum].append(totalComp[sCount])
                 personInfo[totalComp[sCount]].groups[event] = groupNum
                 i-=1
                 sCount+=1
             while perGroup*(len(groups)-groupNum) < i+1:
                 # Take the slower people left and assign
-                groups[groupNum].add(totalComp[i+sCount])
+                groups[groupNum].append(totalComp[i+sCount])
                 personInfo[totalComp[i+sCount]].groups[event] = groupNum
                 i-=1
         if i > -1: # If some people were somehow left out, add them in the last group
@@ -431,7 +434,7 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination):
                                                 else:
                                                     checkLegal = False
                                         if checkLegal:
-                                            sh2.groups[event][idy+1].add(p2[0])
+                                            sh2.groups[event][idy+1].append(p2[0])
                                             pes2[p2[0]].groups[event] = idy+1
                                             assigned = True
                             if not assigned:
@@ -477,7 +480,6 @@ def splitIntoGroups(scheduleInfo,personInfo,scramblerCount):
                 already = already.union(combination) # Don't repeat the same combo of overlaps
 
     return scheduleInfo, personInfo # For some reason it does not update the variables
-
 
 def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs fixing. Assigns judge multiple times in same event
     if fixedSeating:
@@ -586,7 +588,6 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
                         # print(f"Not possible for {event} group {groupNum}. Got {len(scheduleInfo.groupJudges[event][groupNum])} of {needed}")
         return missing
 
-
 def assignJudges(scheduleInfo,personInfo,fixedSeating= True,dontAssign=True):
     if dontAssign: # Don't assign judges when there is only one group
         for event in scheduleInfo.events:
@@ -603,27 +604,27 @@ def reassignJudges(scheduleInfo,personInfo):
         scheduleInfo.groupScramblers[event] = {}
         scheduleInfo.groupRunners[event] = {}
         for group in scheduleInfo.groups[event]:
-            scheduleInfo.groupScramblers[event][group] = set()
-            scheduleInfo.groupRunners[event][group] = set()
+            scheduleInfo.groupScramblers[event][group] = []
+            scheduleInfo.groupRunners[event][group] = []
             if event in scheduleInfo.groupJudges:
                 if len(scheduleInfo.groupJudges[event][group]) > 0: # If judges are assigned for the event
                     # Always at least one scrambler
                     scheduleInfo.groupJudges[event][group].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
                     best = scheduleInfo.groupJudges[event][group][0]
                     scheduleInfo.groupJudges[event][group] = scheduleInfo.groupJudges[event][group][1:]
-                    scheduleInfo.groupScramblers[event][group].add(best)
+                    scheduleInfo.groupScramblers[event][group].append(best)
                     for idx,assignment in enumerate(personInfo[best].assignments[event]):
                         if assignment == group:
                             personInfo[best].assignments[event][idx] = f';S{group}' #Update assignment to scrambler
                     
                     runSc = 1 # If divisible by 2 make scrambler, otherwise runner
                     # Alternate runner/scrambler. Only continue if there is enough judges available
-                    while len(scheduleInfo.groups[event][group])<= len(scheduleInfo.groupJudges[event][group]):
+                    while len(scheduleInfo.groups[event][group])< len(scheduleInfo.groupJudges[event][group]):
                         if runSc%2 == 0:
                             # scrmbler stuff
                             best = scheduleInfo.groupJudges[event][group][0] # Fastest
                             scheduleInfo.groupJudges[event][group] = scheduleInfo.groupJudges[event][group][1:]
-                            scheduleInfo.groupScramblers[event][group].add(best)
+                            scheduleInfo.groupScramblers[event][group].append(best)
                             for idx,assignment in enumerate(personInfo[best].assignments[event]):
                                 if assignment == group:
                                     personInfo[best].assignments[event][idx] = f';S{group}'
@@ -632,12 +633,11 @@ def reassignJudges(scheduleInfo,personInfo):
                                 if personInfo[potRun].age > 14 and personInfo[potRun].age < 40:
                                     break
                             scheduleInfo.groupJudges[event][group].remove(potRun)
-                            scheduleInfo.groupRunners[event][group].add(potRun)
+                            scheduleInfo.groupRunners[event][group].append(potRun)
                             for idx,assignment in enumerate(personInfo[potRun].assignments[event]):
                                 if assignment == group:
                                     personInfo[potRun].assignments[event][idx] = f';R{group}'
                         runSc += 1
-
 
 def convertCSV(scheduleInfo,personInfo,outfile,combined=None):
     """
@@ -685,19 +685,108 @@ def convertCSV(scheduleInfo,personInfo,outfile,combined=None):
     print(header,file=writeCSVf)
     # None
 
+def makePDF(scheduleInfo,personInfo,outfile):
+    pdf = FPDF('p','mm', 'A4')
+
+    pdf.add_page()
+
+    pdf.set_auto_page_break(auto=True,margin=15)
+    # See main for fonts. Needed because of utf-8 stuff and names
+    pdf.add_font('DejaVu','', fname='fonts/DejaVuSansCondensed.ttf', uni=True) 
+    pdf.add_font('DejaVub','', fname='fonts/DejaVuSansCondensed-Bold.ttf', uni=True)
+
+    pdf.set_font('DejaVub','',22)
+    pdf.cell(65,9,f'{scheduleInfo.name} Group Overview',ln=True)
+    for event1 in scheduleInfo.events:
+        event = event1[0]
+        for group in scheduleInfo.groups[event]:
+            # print(event,group)
+            pdf.set_font('DejaVub','',20)
+            pdf.cell(65,9,f'{event} {group}',ln=True) # Event and group
+            pdf.set_font('DejaVu','',14)
+            # Time duration
+            pdf.cell(65,9,f'{scheduleInfo.groupTimes[event][group][0].time()}-{scheduleInfo.groupTimes[event][group][1].time()}',ln=True)
+            pdf.set_font('DejaVub','',12)
+            pdf.cell(45,9,'Competitors')
+            pdf.cell(45,9,'Judges')
+            pdf.cell(45,9,'Scramblers')
+            pdf.cell(45,9,'Runners',ln=True)
+            # print(scheduleInfo.groups[event][group])
+            competitors = scheduleInfo.groups[event][group]
+            if event in scheduleInfo.groupJudges:
+                judges = scheduleInfo.groupJudges[event][group]
+                scramblers = scheduleInfo.groupScramblers[event][group]
+                runners = scheduleInfo.groupRunners[event][group]
+            else:
+                judges = []
+                scramblers = []
+                runners = []
+            i = 0
+            # print(competitors)
+            if len(judges) > 0 and len(judges) < len(competitors): # Warning of few staff
+                pdf.cell(45,9,f'{len(competitors)}')
+                pdf.set_text_color(194,8,8) # Highlight red
+                pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
+                pdf.cell(45,9,f'{len(scramblers)}')
+                pdf.cell(45,9,f'{len(runners)}',ln=True)
+                pdf.set_text_color(0,0,0) # Back to black
+            elif len(judges) == len(competitors) and len(scramblers) <=1: # Warning of few runners/scramblers
+                pdf.cell(45,9,f'{len(competitors)}')
+                pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
+                pdf.set_text_color(194,8,8)
+                pdf.cell(45,9,f'{len(scramblers)}')
+                pdf.cell(45,9,f'{len(runners)}',ln=True)
+                pdf.set_text_color(0,0,0)
+            elif len(judges) == len(competitors) and len(runners) <=1: # warning of few runners
+                pdf.cell(45,9,f'{len(competitors)}')
+                pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
+                pdf.cell(45,9,f'{len(scramblers)}')
+                pdf.set_text_color(194,8,8)
+                pdf.cell(45,9,f'{len(runners)}',ln=True)
+                pdf.set_text_color(0,0,0)
+            else: # All good
+                pdf.cell(45,9,f'# {len(competitors)}')
+                pdf.set_font('DejaVu','',12)
+                pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
+                pdf.cell(45,9,f'{len(scramblers)}')
+                pdf.cell(45,9,f'{len(runners)}',ln=True)
+            while i < len(competitors): # Print everyone
+                # print(i)
+                pdf.set_font('DejaVu','',8)
+                if len(judges) > i and len(scramblers) > i and len(runners) > i: # Enough for now
+                    pdf.cell(45,9,f'{competitors[i]}')
+                    pdf.cell(45,9,f'{judges[i]}')
+                    pdf.cell(45,9,f'{scramblers[i]}')
+                    pdf.cell(45,9,f'{runners[i]}',ln=True)
+                elif len(judges) > i and len(scramblers) > i: # Enough judges and scramblers for now
+                    pdf.cell(45,9,f'{competitors[i]}')
+                    pdf.cell(45,9,f'{judges[i]}')
+                    pdf.cell(45,9,f'{scramblers[i]}',ln=True)
+                elif len(judges) > i: # Enough judges for now
+                    pdf.cell(45,9,f'{competitors[i]}')
+                    pdf.cell(45,9,f'{judges[i]}',ln=True)
+                else: # Only competitors left
+                    pdf.cell(45,9,f'{competitors[i]}',ln=True)
+                i+=1
+                
+    pdf.output(outfile)
+
+
 def main():
     # Download the file from here (Replace the comp id): https://www.worldcubeassociation.org/api/v0/competitions/VestkystCubing2021/wcif
+    # Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
+    # Make a folder with the ones used in the file.
     # fil = open("dm21/wcif.json")
-    fil = open("vestkyst/wcif.json")
+    fil = open("../vestkyst/wcif.json")
 
     data = json.load(fil)
-    # combined = combineEvents('666','777')
+    combined = combineEvents('666','777')
     people,organizers = competitorBasicInfo(data)
     stations = 16
     # schedule = scheduleBasicInfo(data,people,organizers,stations,{'333bf':3},combined)
-    schedule = scheduleBasicInfo(data,people,organizers,stations)
+    # schedule = scheduleBasicInfo(data,people,organizers,stations)
 
-    # schedule = scheduleBasicInfo(people,organizers,stations,combinedEvents=combined)
+    schedule = scheduleBasicInfo(data,people,organizers,stations,combinedEvents=combined)
     scramblers = 3
     schedule, people = splitIntoGroups(schedule,people,scramblers)
 
@@ -710,7 +799,9 @@ def main():
     filenameSave = str(datetime.now().strftime("%m%d_%T")).replace(':','').replace('/','') # Ensure unique name
     # convertCSV(schedule,people,'vestkystcsva.csv',combined)
     # convertCSV(schedule,people,'dmcsva.csv',combined)
-    convertCSV(schedule,people,f'{filenameSave}.csv')
+    name = schedule.name
+    convertCSV(schedule,people,f'out/{name}Groups{filenameSave}.csv')
+    makePDF(schedule,people,f'out/{name}Overview{filenameSave}.pdf')
 
 
 main()
