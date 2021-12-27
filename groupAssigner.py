@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Generic, Iterator, List, Optional, TypeVar # For the priority queue
 from fpdf import FPDF # For pdfs
+import pytz # for timezones
 
 Key = TypeVar("Key")
 
@@ -112,6 +113,7 @@ class Competitor():
 class Schedule():
 	def __init__(self):
 		self.name = ''
+		self.timezone = ''
 		self.events = [] # list of lists. Inner lists have three values: Event name, s time, and e time of r1.
 		self.eventWOTimes = []
 		self.eventTimes = {} # event -> touple of start and end time
@@ -149,12 +151,8 @@ class Schedule():
 				# self.groupTimes[event][groupNum] = ("tid 1", "tid 2")
 
 	def getDaySplit(self):
-		"""
-		There will be an error for some time zones, see use case
-		"""
-
 		for i in range(1,len(self.events)):
-			if self.events[i][1][:10] == self.events[i-1][1][:10]:
+			if self.events[i][1].day == self.events[i-1][1].day:
 				pass
 			else:
 				self.daySplit.append(i)
@@ -221,10 +219,13 @@ def scheduleBasicInfo(data,personInfo,organizers,stations,customGroups=[False], 
 	schedule = Schedule()
 	schedule.name = data['id']
 	already_there = set()
+	timezone = pytz.timezone(data["schedule"]["venues"][0]["timezone"])
 	tempFm = [] # not used for its purpose in the end
 	tempMb = [] # not used for its purpose in the end
 	for room in data["schedule"]["venues"][0]['rooms']:
 		for val in room["activities"]:
+			starttime = pd.Timestamp(val['startTime'][:-1]).tz_localize(pytz.utc).tz_convert(timezone)
+			endtime = pd.Timestamp(val['endTime'][:-1]).tz_localize(pytz.utc).tz_convert(timezone)
 			if val['activityCode'][0] != 'o':
 				if len(val['activityCode']) < 9:
 					if val['activityCode'][-1] not in ['3','2','4'] and val['activityCode'][:-3] not in already_there:
@@ -235,19 +236,19 @@ def scheduleBasicInfo(data,personInfo,organizers,stations,customGroups=[False], 
 						elif tempCombined == combinedEvents[1]:
 							doo = False
 						if doo:
-							schedule.events.append([tempCombined,val['startTime'],val['endTime']])
+							schedule.events.append([tempCombined,starttime,endtime])
 							schedule.eventWOTimes.append(tempCombined)
 							already_there.add(val['activityCode'][:-3])
-							schedule.eventTimes[tempCombined] = (pd.Timestamp(val['startTime'][:-1]),pd.Timestamp(val['endTime'][:-1]))
+							schedule.eventTimes[tempCombined] = (starttime,endtime)
 				else:
 					if val['activityCode'][:4] == '333f' and val['activityCode'][-1] not in ['3','2','4']:
-						tempFm.append([val['activityCode'][:-6],val['startTime'],val['endTime']])
+						tempFm.append([val['activityCode'][:-6],starttime,endtime])
 						schedule.eventWOTimes.append('333fm')
-						schedule.eventTimes[val['activityCode'][:-6]] = (pd.Timestamp(val['startTime'][:-1]),pd.Timestamp(val['endTime'][:-1]))
+						schedule.eventTimes[val['activityCode'][:-6]] = (starttime,endtime)
 					elif val['activityCode'][:4] == '333m' and val['activityCode'][-1] not in ['3','2','4']:
-						tempMb.append([val['activityCode'][:-6],val['startTime'],val['endTime']])
+						tempMb.append([val['activityCode'][:-6],starttime,endtime])
 						schedule.eventWOTimes.append('333mbf')
-						schedule.eventTimes[val['activityCode'][:-6]] = (pd.Timestamp(val['startTime'][:-1]),pd.Timestamp(val['endTime'][:-1]))
+						schedule.eventTimes[val['activityCode'][:-6]] = (starttime,endtime)
 	if len(tempMb) <2: # not used for its purpose in the end
 		schedule.events += tempMb 
 	else:
@@ -267,6 +268,7 @@ def scheduleBasicInfo(data,personInfo,organizers,stations,customGroups=[False], 
 			elif event not in [combinedEvents[0],combinedEvents[1]]: 
 				schedule.eventCompetitors[event].append(person)
 	schedule.organizers = organizers # Storing list of organizers and delegates
+	schedule.timezone = timezone
 	schedule.orderCompetitors(personInfo,combinedEvents[0]+'-'+combinedEvents[1]) # Ordering competitors by rank (used in group making and getting scramblers)
 	schedule.identifyOverlap() # See which events overlap. Doesn't account full overlaps, i.e. for events with same start/ending time
 	getGroupCount(schedule,True,stations,customGroups,just1=['333fm','333mbf','444bf','555bf']) # Getting the amount of groups needed
@@ -279,7 +281,6 @@ def getAvailableDuring(personInfo,scheduleInfo,combinedEvents=None):
 	Identify during which events people should be present based on their registration. 
 	People are considered to be available for an event if they compete in it, or if they are competing on that day
 	and have a registration for an event before and after the event.
-	Note, the day split will be wrong if you use this in a time zone where a UTC date shift appears during the comp day.
 	"""
 	if combinedEvents==None:
 		combinedEvents = ('k','k')
@@ -344,7 +345,7 @@ def getGroupCount(scheduleInfo,fixedSeating,stationCount,custom=[False],just1=[F
 				for amount in range(1,(np.max([math.floor(len(scheduleInfo.eventCompetitors[event])/stationCount) +1,3]))):
 					scheduleInfo.groups[event][amount] = []
 	
-def splitNonOverlapGroups(scheduleInfo,personInfo,event,scramblerCount):
+def splitNonOverlapGroups(scheduleInfo,personInfo,event):
 	"""
 	Function called for events which do not have something overlapping.
 	In the regular assignments, sets aside scramblerCount scramblers for each group
@@ -353,6 +354,7 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,scramblerCount):
 	groups = scheduleInfo.groups[event]
 	totalComp = scheduleInfo.eventCompetitors[event]
 	perGroup = len(totalComp)/len(groups)
+	scramblerCount = round(1/7*perGroup)
 	# Special stuff to make sure people of orga team is not in the same group
 	orgaCompetitors = [compOrga for compOrga in scheduleInfo.organizers if compOrga in totalComp]
 	p2 = deepcopy(totalComp)
@@ -387,11 +389,13 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,scramblerCount):
 			personInfo[comp].groups[event] = groupNum
 	else:
 		for groupNum in range(1,len(groups)+1):
+			offsetScramblers = 0
 			for _ in range(1,scramblerCount+1): # taking best people, to ensure there are scramblers later (not all fast in same group)
-				comp = p2[0]
-				p2 = p2[1:]
+				comp = p2[offsetScramblers]
+				p2.remove(comp)
 				groups[groupNum].append(comp)
 				personInfo[comp].groups[event] = groupNum
+				offsetScramblers +=1
 			while len(groups[groupNum]) < perGroup and len(p2) > 0: # Assigning slowest first
 				comp = p2[-1]
 				p2 = p2[:-1]
@@ -478,12 +482,12 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination):
 		print(f'sucess in overlapping events ({combination})')
 	return scheduleInfo,personInfo # For some reason it does not update the variables
 
-def splitIntoGroups(scheduleInfo,personInfo,scramblerCount):
+def splitIntoGroups(scheduleInfo,personInfo):
 	already = set()
 	for event in scheduleInfo.events:
 		if event[0] not in already:
 			if event[0] not in scheduleInfo.overlappingEvents:
-				splitNonOverlapGroups(scheduleInfo, personInfo, event[0],scramblerCount)
+				splitNonOverlapGroups(scheduleInfo, personInfo, event[0])
 				already.add(event[0])
 			else: # Do one set of overlapping events
 				combination = set()
@@ -658,16 +662,26 @@ def reassignJudges(scheduleInfo,personInfo):
 					while len(scheduleInfo.groups[event][group])< len(scheduleInfo.groupJudges[event][group]):
 						if runSc%2 == 0:
 							# scrmbler stuff
-							best = scheduleInfo.groupJudges[event][group][0] # Fastest
-							scheduleInfo.groupJudges[event][group] = scheduleInfo.groupJudges[event][group][1:]
-							scheduleInfo.groupScramblers[event][group].append(best)
+							passed = False
+							for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
+								if personInfo[potScram].age > 12: # Arguably can be set lower/higher for min
+									passed = True
+									break
+							if not passed:
+								potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
+							scheduleInfo.groupJudges[event][group].remove(potScram)
+							scheduleInfo.groupScramblers[event][group].append(potScram)
 							for idx,assignment in enumerate(personInfo[best].assignments[event]):
 								if assignment == group:
-									personInfo[best].assignments[event][idx] = f';S{group}'
+									personInfo[potScram].assignments[event][idx] = f';S{group}'
 						else: # Runners
+							passed = False
 							for potRun in scheduleInfo.groupJudges[event][group][::-1]: # Take slowest first
-								if personInfo[potRun].age > 14 and personInfo[potRun].age < 40:
+								if personInfo[potRun].age > 14 and personInfo[potRun].age < 40: # Arguably can be set to lower/higher for min/max
+									passed = True
 									break
+							if not passed:
+								potRun = scheduleInfo.groupJudges[event][group][-1]
 							scheduleInfo.groupJudges[event][group].remove(potRun)
 							scheduleInfo.groupRunners[event][group].append(potRun)
 							for idx,assignment in enumerate(personInfo[potRun].assignments[event]):
@@ -824,8 +838,7 @@ def main():
 	schedule = scheduleBasicInfo(data,people,organizers,stations)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,stations,combinedEvents=combined)
-	scramblers = 3
-	schedule, people = splitIntoGroups(schedule,people,scramblers)
+	schedule, people = splitIntoGroups(schedule,people)
 
 	assignJudges(schedule,people)
 
