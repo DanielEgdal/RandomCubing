@@ -487,21 +487,37 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
         groups = scheduleInfo.groups[event]
         competitors = scheduleInfo.eventCompetitors[event]
         maybePeople = scheduleInfo.inVenue[event]
+        atleast1 = set() # Make sure everyone judges at least once before giving two assignments to other people
         for groupNum in groups:
             pq = MaxPQ()
             scheduleInfo.groupJudges[event][groupNum] = []
             needed = len(scheduleInfo.groups[event][groupNum]) + round(2/7*(len(scheduleInfo.groups[event][groupNum])))
             used = set() # those that were already tried
-            for comp in competitors: # First try competitors in the event
+            for comp in competitors: # First, get only the people who haven't judged in the event
                 if comp not in scheduleInfo.organizers:
-                    used.add(comp)
                     if comp not in scheduleInfo.groups[event][groupNum]:
-                        pq.insert([comp,(1.5*len(personInfo[comp].events))/personInfo[comp].totalAssignments]) # I don't think the 1.5 constant makes a change in the end
-            while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: #
-                judge = pq.del_max()[0]
-                personInfo[judge].totalAssignments +=1
-                personInfo[judge].assignments[event].append(groupNum)
-                scheduleInfo.groupJudges[event][groupNum].append(judge) # not yet created
+                        if comp not in atleast1:
+                            pq.insert([comp,math.log((len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+            while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
+                    judge = pq.del_max()[0]
+                    personInfo[judge].totalAssignments +=1
+                    personInfo[judge].assignments[event].append(groupNum)
+                    scheduleInfo.groupJudges[event][groupNum].append(judge)
+                    atleast1.add(judge) 
+                    used.add(judge)
+            
+            if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
+                for comp in competitors: # second try competitors in the event
+                    if comp not in used and comp not in scheduleInfo.organizers:
+                        if comp not in scheduleInfo.groups[event][groupNum]:
+                            pq.insert([comp,math.log((len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+                while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
+                    judge = pq.del_max()[0]
+                    personInfo[judge].totalAssignments +=1
+                    personInfo[judge].assignments[event].append(groupNum)
+                    scheduleInfo.groupJudges[event][groupNum].append(judge)
+                    atleast1.add(judge) 
+                    used.add(judge)
             
             if len(scheduleInfo.groupJudges[event][groupNum]) < needed: # If more people are needed, try all in the venue
                 for comp in maybePeople:
@@ -509,7 +525,7 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
                         if comp in scheduleInfo.organizers:
                             pq.insert([comp,0])
                         else:
-                            pq.insert([comp,((1.5*len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+                            pq.insert([comp,(math.log(len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
                 while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
                     judge = pq.del_max()[0]
                     personInfo[judge].totalAssignments +=1
@@ -550,7 +566,7 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
                                         else:
                                             checkLegal = False
                             if checkLegal:
-                                pq.insert([comp,(1.5*len(personInfo[comp].events))/personInfo[comp].totalAssignments]) # I don't think the 1.5 constant makes a change in the end
+                                pq.insert([comp,(math.log(len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
                 while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
                     judge = pq.del_max()[0]
                     personInfo[judge].totalAssignments +=1
@@ -577,7 +593,7 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
                                 if comp in scheduleInfo.organizers:
                                     pq.insert([comp,0])
                                 else:
-                                    pq.insert([comp,((1.5*len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+                                    pq.insert([comp,(math.log(len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
                     while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
                         judge = pq.del_max()[0]
                         personInfo[judge].totalAssignments +=1
@@ -724,21 +740,21 @@ def makePDF(scheduleInfo,personInfo,outfile):
             i = 0
             # print(competitors)
             if len(judges) > 0 and len(judges) < len(competitors): # Warning of few staff
-                pdf.cell(45,9,f'{len(competitors)}')
+                pdf.cell(45,9,f'# {len(competitors)}')
                 pdf.set_text_color(194,8,8) # Highlight red
                 pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
                 pdf.cell(45,9,f'{len(scramblers)}')
                 pdf.cell(45,9,f'{len(runners)}',ln=True)
                 pdf.set_text_color(0,0,0) # Back to black
             elif len(judges) == len(competitors) and len(scramblers) <=1: # Warning of few runners/scramblers
-                pdf.cell(45,9,f'{len(competitors)}')
+                pdf.cell(45,9,f'# {len(competitors)}')
                 pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
                 pdf.set_text_color(194,8,8)
                 pdf.cell(45,9,f'{len(scramblers)}')
                 pdf.cell(45,9,f'{len(runners)}',ln=True)
                 pdf.set_text_color(0,0,0)
             elif len(judges) == len(competitors) and len(runners) <=1: # warning of few runners
-                pdf.cell(45,9,f'{len(competitors)}')
+                pdf.cell(45,9,f'# {len(competitors)}')
                 pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
                 pdf.cell(45,9,f'{len(scramblers)}')
                 pdf.set_text_color(194,8,8)
@@ -777,16 +793,17 @@ def main():
     # Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
     # Make a folder with the ones used in the file.
     # fil = open("dm21/wcif.json")
-    fil = open("../vestkyst/wcif.json")
+    # fil = open("../vestkyst/wcif.json")
+    fil = open("../jontwix/wcif.json")
 
     data = json.load(fil)
-    combined = combineEvents('666','777')
+    # combined = combineEvents('666','777')
     people,organizers = competitorBasicInfo(data)
     stations = 16
     # schedule = scheduleBasicInfo(data,people,organizers,stations,{'333bf':3},combined)
-    # schedule = scheduleBasicInfo(data,people,organizers,stations)
+    schedule = scheduleBasicInfo(data,people,organizers,stations)
 
-    schedule = scheduleBasicInfo(data,people,organizers,stations,combinedEvents=combined)
+    # schedule = scheduleBasicInfo(data,people,organizers,stations,combinedEvents=combined)
     scramblers = 3
     schedule, people = splitIntoGroups(schedule,people,scramblers)
 
