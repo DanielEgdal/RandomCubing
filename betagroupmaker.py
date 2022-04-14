@@ -96,16 +96,21 @@ def basicPr():
 	return 100000000 # So sorting work when someone hasn't competed
 
 class Competitor():
-	def __init__(self,name,id):
+	def __init__(self,name,id,citizenship,gender,wcaId):
 		self.name = name
 		self.id = id
 		self.events = set()
+		self.citizenship = citizenship
+		self.gender = gender
+		self.wcaId = wcaId
 		self.prs = defaultdict(basicPr)
 		self.availableDuring = set() # a set of events where they will be in the venue
 		self.orga = 1 # for calculation. Actual orga get 3, for the time being 
 		self.groups = {} # Event -> groupnum
 		self.assignments = defaultdict(list)
+		self.dob = ''
 		self.age = 0
+		self.stationNumbers = {}
 		self.totalAssignments = 1 # so addition works
 
 	def __str__(self):
@@ -117,10 +122,12 @@ class Schedule():
 		self.timezone = ''
 		self.events = [] # list of lists. Inner lists have three values: Event name, s time, and e time of r1.
 		self.eventWOTimes = []
+		self.timelimits = {}
 		self.eventTimes = {} # event -> touple of start and end time
 		self.eventCompetitors = defaultdict(list)
 		self.daySplit = [0] # the index where a day changes. Len = days-1
 		self.groups = {} # event -> groupnum -> group
+		self.stations = {}
 		self.groupJudges = {} # event -> groupnum -> group. Made later
 		self.groupRunners = {} # Will be event -> groupnum -> group. Made later
 		self.groupScramblers = {} # Will be event -> groupnum -> group. Made later
@@ -145,6 +152,11 @@ class Schedule():
 					comSplit = event.split('-')
 					personInfo[person].prs[combinedEvents] = personInfo[person].prs[comSplit[0]] + personInfo[person].prs[comSplit[1]]
 			self.eventCompetitors[event].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
+
+	def orderForStations(self,personInfo): # For stations
+		for event in self.eventCompetitors:
+			for group in self.groups[event]:
+				self.groups[event][group].sort(key=lambda x:personInfo[x].prs[event])
 
 	def getIndividualGroupTimes(self):
 		for event in self.groups:
@@ -194,7 +206,7 @@ def competitorBasicInfo(data):
 	for person in data['persons']:
 		try:
 			if person['registration']['status'] == 'accepted':
-				competitor = Competitor(person["name"],person['registration']['wcaRegistrationId'])
+				competitor = Competitor(person["name"],person['registrantId'],person['countryIso2'],person['gender'],person['wcaId'])
 				for val in person["roles"]: # getOrga
 					if val in ('organizer','delegate','trainee-delegate'):
 						competitor.orga = 3 # Setting this for sorting by speed
@@ -203,14 +215,15 @@ def competitorBasicInfo(data):
 						competitor.orga = 3 # Setting this for sorting by speed
 						delegates.add(person['name'])
 				competitor.age = year - int(person["birthdate"][:4]) #getAge
+				competitor.dob = person["birthdate"]
 
 				for eventData in person['personalBests']:
 					if eventData['eventId'] not in ('333fm','444bf','333bf','555bf'):
 						if eventData['type'] == 'average':
-							competitor.prs[eventData['eventId']] = int(eventData['worldRanking'])
+							competitor.prs[eventData['eventId']] = int(eventData['best'])
 					else:
 						if eventData['type'] == 'single':
-							competitor.prs[eventData['eventId']] = int(eventData['worldRanking'])
+							competitor.prs[eventData['eventId']] = int(eventData['best'])
 				for event in person['registration']['eventIds']:
 					competitor.events.add(event)
 				comp_dict[person["name"]] = competitor
@@ -299,6 +312,13 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,customGroups
 	getGroupCount(schedule,True,stations,customGroups,just1=['333fm','333mbf','444bf','555bf']) # Getting the amount of groups needed
 	schedule.getIndividualGroupTimes() # Seeing the start/end time of each group
 	getAvailableDuring(personInfo,schedule,combinedEvents) # Identify during which events people should be present based on their registration
+
+	for event in data['events']:
+		schedule.timelimits[event['rounds'][0]['id'].split('-')[0]] = (event['rounds'][0]['timeLimit'],event['rounds'][0]['cutoff'])
+		# print(event['rounds'][0]['id'],event['rounds'][0]['timeLimit'],event['rounds'][0]['cutoff'])
+		# for round in event['rounds'][0]:
+		# 	print(round)
+
 	return schedule
 
 def getAvailableDuring(personInfo,scheduleInfo,combinedEvents=None):
@@ -380,7 +400,7 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,fixed=True):
 	# 	dontSpeedScramble = set()
 	# else:
 	# 	dontSpeedScramble = event
-	dontSpeedScramble = ('333bf')
+	dontSpeedScramble = ['333bf'] # for some reason very import to be list, otherwise reads substring
 	groups = scheduleInfo.groups[event]
 	totalComp = scheduleInfo.eventCompetitors[event]
 	perGroup = len(totalComp)/len(groups)
@@ -431,6 +451,7 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,fixed=True):
 
 	# Regular assigning now
 	if event in dontSpeedScramble: # Don't take fast people aside for faster scrambling later
+		
 		for groupNum in range(1,len(groups)+1):
 			while len(groups[groupNum]) < perGroup and len(p2) > 0: # Assigning slowest first
 				comp = p2[-1]
@@ -444,13 +465,14 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,fixed=True):
 			personInfo[comp].groups[event] = groupNum
 	else:
 		for groupNum in range(1,len(groups)+1):
-			offsetScramblers = 0
+			# offsetScramblers = 0
 			for _ in range(1,scramblerCount+1): # taking best people, to ensure there are scramblers later (not all fast in same group)
-				comp = p2[offsetScramblers]
-				p2.remove(comp)
+				# comp = p2[offsetScramblers]
+				comp = p2[0]
+				p2 = p2[1:]
 				groups[groupNum].append(comp)
 				personInfo[comp].groups[event] = groupNum
-				offsetScramblers +=1
+				# offsetScramblers +=1
 			while len(groups[groupNum]) < perGroup and len(p2) > 0: # Assigning slowest first
 				comp = p2[-1]
 				p2 = p2[:-1]
@@ -909,7 +931,6 @@ def convertCSV(scheduleInfo,personInfo,outfile,combined=None):
 		header+=pString+'\n'
 	writeCSVf = open(outfile,'w')
 	print(header,file=writeCSVf)
-	# None
 
 def makePDFOverview(scheduleInfo,outfile):
 	pdf = FPDF('p','mm', 'A4')
@@ -983,22 +1004,22 @@ def makePDFOverview(scheduleInfo,outfile):
 					# print(i)
 					pdf.set_font('DejaVu','',8)
 					if len(competitors) > i and len(judges) > i and len(scramblers) > i and len(runners) > i: # Enough for now
-						pdf.cell(45,9,f'{competitors[i]}')
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}') # HHHHH
 						pdf.cell(45,9,f'{judges[i]}')
 						pdf.cell(45,9,f'{scramblers[i]}')
 						pdf.cell(45,9,f'{runners[i]}',ln=True)
 					elif len(judges) > i and len(scramblers) > i: # Enough judges and scramblers for now
-						pdf.cell(45,9,f'{competitors[i]}')
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}')
 						pdf.cell(45,9,f'{judges[i]}')
 						pdf.cell(45,9,f'{scramblers[i]}',ln=True)
 					elif len(competitors) > i and len(judges) > i: # Enough judges and competitors for now
-						pdf.cell(45,9,f'{competitors[i]}')
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}')
 						pdf.cell(45,9,f'{judges[i]}',ln=True)
 					elif len(judges) > i: # only used in case there is 'bonus judge'
 						pdf.cell(45,9,f'-')
 						pdf.cell(45,9,f'{judges[i]}',ln=True)
 					else: # Only competitors left
-						pdf.cell(45,9,f'{competitors[i]}',ln=True)
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}',ln=True)
 					i+=1
 		else:
 			pdf.set_font('DejaVub','',20)
@@ -1010,128 +1031,226 @@ def makePDFOverview(scheduleInfo,outfile):
 				
 	pdf.output(outfile)
 
-def makePDFCards(scheduleInfo,personInfo,outfile): # not made
-	pdf = FPDF('p','mm', 'A4')
+def writeNames(personlist,progress,ln,pdf):
+	pdf.cell(65,9,f'{personlist[progress].name}, ID: {personlist[progress].id}',ln=ln)
 
+def eventPatch(personInfo,personlist,progress,event,ln,pdf):
+	translate = {'333':'3x3','222':'2x2','444':'4x4','555':'5x5','666':'6x6','777':'7x7',
+	'333oh':'3x3 OH','333fm':'333fm','333mbf':'Multi','333bf':'3BLD','minx':'Megaminx','pyram':'Pyraminx',
+	'skewb':'Skewb','clock':'Clock','555bf':'5BLD','444bf':'4BLD','sq1':'Square-1'}
+	line_height = pdf.font_size *2
+	col_width = pdf.epw / 10
+	
+	pdf.multi_cell(col_width,line_height,translate[event],border=1, ln=3)
+
+	if event in personInfo[personlist[progress].name].groups:
+		pdf.multi_cell(25,line_height,f"Grp. {str(personInfo[personlist[progress].name].groups[event])}, Bord {personInfo[personlist[progress].name].stationNumbers[event]}",border=1, ln=3)
+	else:
+		pdf.multi_cell(25,line_height,' ',border=1, ln=3)
+	# pdf.multi_cell(col_width,line_height,str(personInfo[personlist[progress].name].groups[event]),border=1, ln=3)
+
+	strlist = [str(val) if len(str(val)) ==1 else val[1:] for val in personInfo[personlist[progress].name].assignments[event]]
+	sttr = ','.join(strlist)
+	pdf.multi_cell(col_width,line_height,sttr,border=1, ln=3)
+	pdf.multi_cell(2,line_height,'',border=0, ln=3)
+	if ln:
+		pdf.ln(line_height)
+
+def compCards(scheduleInfo,personInfo):
+	pdf = FPDF()
 	pdf.add_page()
+	pdf.add_font('DejaVu','', fname='fonts/DejaVuSansCondensed.ttf', uni=True)
+	pdf.set_font('DejaVu','',8)
+	# personInfo.sort(key=lambda x:x['name'])
+	personlist = [val for val in personInfo.values()]
+	personlist.sort(key=lambda x:x.name)
+	progress = 0
+	event_list = []
+	for event in scheduleInfo.eventWOTimes:
+		sevent = event.split('-')
+		for event_ in sevent:
+			event_list.append(event_)
+	while progress < len(personlist):
+		
+		if progress+2 < len(personlist):
+			writeNames(personlist,progress,False,pdf)
+			writeNames(personlist,progress+1,False,pdf)
+			writeNames(personlist,progress+2,True,pdf)
+			for event in event_list:
+				eventPatch(personInfo,personlist,progress,event,False,pdf)
+				eventPatch(personInfo,personlist,progress+1,event,False,pdf)
+				eventPatch(personInfo,personlist,progress+2,event,True,pdf)
 
-	pdf.set_auto_page_break(auto=True,margin=15)
-	# See main for fonts. Needed because of utf-8 stuff and names
-	pdf.add_font('DejaVu','', fname='fonts/DejaVuSansCondensed.ttf', uni=True) 
-	pdf.add_font('DejaVub','', fname='fonts/DejaVuSansCondensed-Bold.ttf', uni=True)
+		elif progress+1 < len(personlist):
+			writeNames(personlist,progress,False,pdf)
+			writeNames(personlist,progress+1,True,pdf)
+			for event in event_list:
+				eventPatch(personInfo,personlist,progress,event,False,pdf)
+				eventPatch(personInfo,personlist,progress+1,event,True,pdf)
+		else:
+			writeNames(personlist,progress,True,pdf)
+			for event in event_list:
+				eventPatch(personInfo,personlist,progress,event,True,pdf)
+		progress +=3
+	# for idx,person in enumerate(personlist):
+	# 	print(person.name)
+	# 	if (idx+1)%split == 0:
+	# 		pdf.ln(line_height)
+	
+	# for idx,person in enumerate(personInfo):
+	# 	pdf.cell(45,9,f'{person.name}, {person.id}')
+	# 	pdf.multi_cell(col_width,line_height,person,border=1, ln=3)
+	# 	if (idx+1)%split == 0:
+	# 		pdf.ln(line_height)
+			# personInfo[person].groups[event]
+	pdf.output('tabletry.pdf')
 
-	pdf.set_font('DejaVub','',22)
-	pdf.cell(65,9,f'{scheduleInfo.name} Group Overview',ln=True)
-	for event1 in scheduleInfo.events:
-		event = event1[0]
-		for group in scheduleInfo.groups[event]:
-			# print(event,group)
-			pdf.set_font('DejaVub','',20)
-			pdf.cell(65,9,f'{event} {group}',ln=True) # Event and group
-			pdf.set_font('DejaVu','',14)
-			# Time duration
-			pdf.cell(65,9,f'{scheduleInfo.groupTimes[event][group][0].time()}-{scheduleInfo.groupTimes[event][group][1].time()}',ln=True)
-			pdf.set_font('DejaVub','',12)
-			pdf.cell(45,9,'Competitors')
-			pdf.cell(45,9,'Judges')
-			pdf.cell(45,9,'Scramblers')
-			pdf.cell(45,9,'Runners',ln=True)
-			# print(scheduleInfo.groups[event][group])
-			competitors = scheduleInfo.groups[event][group]
-			if event in scheduleInfo.groupJudges:
-				judges = scheduleInfo.groupJudges[event][group]
-				scramblers = scheduleInfo.groupScramblers[event][group]
-				runners = scheduleInfo.groupRunners[event][group]
+def getRegList(personInfo):
+	pdf = FPDF()
+	pdf.add_page()
+	pdf.add_font('DejaVu','', fname='fonts/DejaVuSansCondensed.ttf', uni=True)
+	pdf.set_font('DejaVu','',8)
+	line_height = pdf.font_size *3
+	col_width = pdf.epw / 9
+	personlist = [val for val in personInfo.values()]
+	personlist.sort(key=lambda x:x.name)
+	for person in personlist:
+		pdf.multi_cell(10,line_height,' ',border=1, ln=3)
+		pdf.multi_cell(60,line_height,person.name,border=1, ln=3)
+		if person.wcaId:
+			pdf.multi_cell(col_width,line_height,person.wcaId,border=1, ln=3)
+		else:
+			pdf.multi_cell(col_width,line_height,'newcomer',border=1, ln=3)
+			pdf.multi_cell(10,line_height,person.citizenship,border=1, ln=3)
+			pdf.multi_cell(6,line_height,person.gender,border=1, ln=3)
+			pdf.multi_cell(col_width,line_height,person.dob,border=1, ln=3)
+			pdf.multi_cell(col_width,line_height,'DSF medlem?',border=1, ln=3)
+			pdf.multi_cell(10,line_height,' ',border=1, ln=3)
+		pdf.ln(line_height)
+	pdf.output('checkinlist.pdf')
+
+def getStationNumbers(scheduleInfo,personInfo,combined):
+	for event in scheduleInfo.eventWOTimes:
+		scheduleInfo.stations[event] = {}
+		for groupNum in scheduleInfo.groups[event]:
+			scheduleInfo.stations[event][groupNum] = {}
+			for idx,person in enumerate(scheduleInfo.groups[event][groupNum]):
+				personInfo[person].stationNumbers[event] = idx+1
+				scheduleInfo.stations[event][groupNum][person] = idx+1
+
+	if combined: # Fix the assignment back to regular events
+		combHy = combined[0]+'-'+combined[1]
+		for person in personInfo:
+			for comSplit in combined:
+				if comSplit in personInfo[person].events:
+					personInfo[person].stationNumbers[comSplit] = deepcopy(personInfo[person].stationNumbers[combHy])
+			if combHy in personInfo[person].stationNumbers:
+				personInfo[person].stationNumbers.pop(combHy)
+
+def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
+	header = 'Name'
+	combHy = combined[0]+'-'+combined[1]
+	for event in scheduleInfo.events:
+		if combined:
+			if event[0] == combHy:
+				for event in event[0].split('-'):
+					header+=f',{event}'
 			else:
-				judges = []
-				scramblers = []
-				runners = []
-			i = 0
-			# print(competitors)
-			if len(judges) > 0 and len(judges) < len(competitors): # Warning of few staff
-				pdf.cell(45,9,f'# {len(competitors)}')
-				pdf.set_text_color(194,8,8) # Highlight red
-				pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
-				pdf.cell(45,9,f'{len(scramblers)}')
-				pdf.cell(45,9,f'{len(runners)}',ln=True)
-				pdf.set_text_color(0,0,0) # Back to black
-			elif len(judges) == len(competitors) and len(scramblers) <=1: # Warning of few runners/scramblers
-				pdf.cell(45,9,f'# {len(competitors)}')
-				pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
-				pdf.set_text_color(194,8,8)
-				pdf.cell(45,9,f'{len(scramblers)}')
-				pdf.cell(45,9,f'{len(runners)}',ln=True)
-				pdf.set_text_color(0,0,0)
-			elif len(judges) == len(competitors) and len(runners) <=1: # warning of few runners
-				pdf.cell(45,9,f'# {len(competitors)}')
-				pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
-				pdf.cell(45,9,f'{len(scramblers)}')
-				pdf.set_text_color(194,8,8)
-				pdf.cell(45,9,f'{len(runners)}',ln=True)
-				pdf.set_text_color(0,0,0)
-			else: # All good
-				pdf.cell(45,9,f'# {len(competitors)}')
-				pdf.set_font('DejaVu','',12)
-				pdf.cell(45,9,f'{len(judges)}/{len(competitors)}')
-				pdf.cell(45,9,f'{len(scramblers)}')
-				pdf.cell(45,9,f'{len(runners)}',ln=True)
-			while i < len(competitors): # Print everyone
-				# print(i)
-				pdf.set_font('DejaVu','',8)
-				if len(judges) > i and len(scramblers) > i and len(runners) > i: # Enough for now
-					pdf.cell(45,9,f'{competitors[i]}')
-					pdf.cell(45,9,f'{judges[i]}')
-					pdf.cell(45,9,f'{scramblers[i]}')
-					pdf.cell(45,9,f'{runners[i]}',ln=True)
-				elif len(judges) > i and len(scramblers) > i: # Enough judges and scramblers for now
-					pdf.cell(45,9,f'{competitors[i]}')
-					pdf.cell(45,9,f'{judges[i]}')
-					pdf.cell(45,9,f'{scramblers[i]}',ln=True)
-				elif len(judges) > i: # Enough judges for now
-					pdf.cell(45,9,f'{competitors[i]}')
-					pdf.cell(45,9,f'{judges[i]}',ln=True)
-				else: # Only competitors left
-					pdf.cell(45,9,f'{competitors[i]}',ln=True)
-				i+=1
-				
-	pdf.output(outfile)
+				header+=f',{event[0]}'
+		else:
+			header+=f',{event[0]}'
+	hCSV = header.split(',')
+	header+='\n'
+	for person in personInfo:
+		pString = str(person)
+		for event in hCSV:
+			if event in personInfo[person].groups:
+				pString+=f"{personInfo[person].groups[event]};{personInfo[person].stationNumbers[event]}"
+			pString+=','
+		pString = pString[:-1]
+		header+=pString+'\n'
+	writeCSVf = open(outfile,'w')
+	print(header,file=writeCSVf)
 
+def CSVForTimeLimits(scheduleInfo,personInfo,combined,outfile):
+	header = ''
+	combHy = combined[0]+'-'+combined[1]
+	for event in scheduleInfo.events:
+		if combined:
+			if event[0] == combHy:
+				for event in event[0].split('-'):
+					header+=f',{event}'
+			else:
+				header+=f',{event[0]}'
+		else:
+			header+=f',{event[0]}'
+	header = header[1:]
+	hCSV = header.split(',')
+
+	header+='\n'
+	for event in hCSV:
+		# print('w,',event)
+		t, c = scheduleInfo.timelimits[event]
+		if (not t['cumulativeRoundIds']) and (not c):
+			header += f"T;{t['centiseconds']},"
+		elif len(t['cumulativeRoundIds']) > 1:
+			eventstring = ''
+			for tlevent in t['cumulativeRoundIds']:
+				eventstring += f";{tlevent.split('-')[0]}"
+			header += f"S;{t['centiseconds']}{eventstring}," # HHHHH
+		elif t['cumulativeRoundIds']:
+			for tlevent in t['cumulativeRoundIds']:
+				eventstring = f"{tlevent.split('-')[0]}"
+			header += f"C;{t['centiseconds']},"
+		elif c:
+			header += f"K;{c['attemptResult']};{t['centiseconds']},"
+	header = header[:-1]
+	print(header)
+	writeCSVf = open(outfile,'w')
+	print(header,file=writeCSVf)
 
 def main():
 	# Download the file from here (Replace the comp id): https://www.worldcubeassociation.org/api/v0/competitions/VestkystCubing2021/wcif
 	# Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 	# Make a folder with the ones used in the file.
-	# fil = open("dm21/wcif.json")
-	# fil = open("../vestkyst/wcif.json")
-	# fil = open("../jontwix/wcif.json")
 	fil = open("../odsherred/wcif.json")
-
-	data = json.load(fil)
-	combined = combineEvents('666','777')
-	people,organizers,delegates = competitorBasicInfo(data)
+	# fil = open("../dåstrup/wcif.json")
+	
+	fixed = False # Bool 
 	stations = 20
+	combined = None
+	combined = combineEvents('666','777')
+	data = json.load(fil)
+	
+	people,organizers,delegates = competitorBasicInfo(data)
+	
 	# schedule = scheduleBasicInfo(data,people,organizers,stations,{'333bf':3},combined)
-	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,{'333bf':2},combined)
+	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,{'333bf':2},combinedEvents=combined)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,stations,combinedEvents=combined)
-	schedule, people = splitIntoGroups(schedule,people,fixed=False)
+	schedule, people = splitIntoGroups(schedule,people,fixed=fixed)
 
-	assignJudges(schedule,people,False)
+	assignJudges(schedule,people,fixed)
 	
 	sblacklist = open('sblacklist.txt').readlines()
 	set_sblacklist = set()
 	for i in sblacklist:
 		set_sblacklist.add(i.strip('\n'))
 
-	reassignJudges(schedule,people,set_sblacklist,False)
-	# print(people['Daniel Vædele Egdal'].groups)
-	# print(people['Daniel Vædele Egdal'].assignments)
+	reassignJudges(schedule,people,set_sblacklist,fixed)
+
 	filenameSave = str(datetime.now().strftime("%m%d_%T")).replace(':','').replace('/','') # Ensure unique name
-	# convertCSV(schedule,people,'vestkystcsva.csv',combined)
-	# convertCSV(schedule,people,'dmcsva.csv',combined)
+
 	name = schedule.name
-	convertCSV(schedule,people,f'out/{name}Groups{filenameSave}.csv')
+	convertCSV(schedule,people,f'out/{name}Groups{filenameSave}.csv',combined=combined)
+	getStationNumbers(schedule,people,combined)
 	makePDFOverview(schedule,f'out/{name}Overview{filenameSave}.pdf')
+
+	compCards(schedule,people)
+	getRegList(people)
+	
+	CSVForScorecards(schedule,people,combined,f'out/{name}stationNumbers{filenameSave}.csv')
+	CSVForTimeLimits(schedule,people,combined,f'out/{name}timeLimits.csv')
 	# makePDFCards(schedule,people,f'out/{name}Cards{filenameSave}.pdf') # not made
 
 
