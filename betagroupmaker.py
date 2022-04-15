@@ -120,6 +120,7 @@ class Competitor():
 class Schedule():
 	def __init__(self):
 		self.name = ''
+		self.longName= ''
 		self.timezone = ''
 		self.events = [] # list of lists. Inner lists have three values: Event name, s time, and e time of r1.
 		self.eventWOTimes = []
@@ -242,6 +243,7 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,customGroups
 		combinedEvents = ('k','k')
 	schedule = Schedule()
 	schedule.name = data['id']
+	schedule.longName = data['name']
 	already_there = set()
 	timezone = pytz.timezone(data["schedule"]["venues"][0]["timezone"])
 	tempFm = [] # not used for its purpose in the end
@@ -1033,38 +1035,89 @@ def makePDFOverview(scheduleInfo,outfile):
 				
 	pdf.output(outfile)
 
+def shortenName(name):
+	while len(name) > 26:
+		lname = name.split(' ')
+		lname = lname[:-2] + [lname[-1]]
+		name = ' '.join(lname)
+	return name
+
 def writeNames(personlist,progress,ln,pdf):
-	pdf.cell(65,9,f'{personlist[progress].name}, ID: {personlist[progress].id}',ln=ln)
+	pdf.set_font('DejaVuB','',9.2)
+	pdf.cell(50,3.2,f'{shortenName(personlist[progress].name)}')
+	pdf.cell(16,3.2,f'ID: {personlist[progress].id}',ln=ln)
+
+def writeCompeteLine(personInfo,personlist,progress,ln,pdf):
+	pdf.set_font('DejaVu','',6)
+	compete = 'Deltager' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Competitor'
+	pdf.cell(19.5,2.3,'')
+	pdf.cell(16.5,2.3,compete)
+	pdf.cell(30.5,2.3,'',ln=ln)
+
+def writeHeaderCards(personInfo,personlist,progress,ln,pdf):
+	pdf.set_font('DejaVu','',6)
+	table = 'Bord' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Table'
+	group = 'Gruppe' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Group'
+	event = 'Disciplin' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Event'
+	helping = 'Hjælper' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Helper'
+	pdf.cell(18.5,2,event)
+	pdf.cell(7.8,2,group)
+	pdf.cell(8,2,table)
+	pdf.cell(31.5,2,helping,ln=ln)
 
 def eventPatch(personInfo,personlist,progress,event,ln,pdf):
 	translate = {'333':'3x3','222':'2x2','444':'4x4','555':'5x5','666':'6x6','777':'7x7',
 	'333oh':'3x3 OH','333fm':'333fm','333mbf':'Multi','333bf':'3BLD','minx':'Megaminx','pyram':'Pyraminx',
 	'skewb':'Skewb','clock':'Clock','555bf':'5BLD','444bf':'4BLD','sq1':'Square-1'}
-	line_height = pdf.font_size *2
+	pdf.set_font('DejaVu','',8.8)
+	line_height = pdf.font_size *1.7
 	col_width = pdf.epw / 10
-	# print(dir(pdf))
-	# if pdf.get_y() > 200:
 
-	pdf.multi_cell(col_width,line_height,translate[event],border=1, ln=3)
+	# Event
+	pdf.multi_cell(18,line_height,translate[event],border=1, ln=3)
 
+	# Group and station
 	if event in personInfo[personlist[progress].name].groups:
-		pdf.multi_cell(25,line_height,f"Grp. {str(personInfo[personlist[progress].name].groups[event])}, Bord {personInfo[personlist[progress].name].stationNumbers[event]}",border=1, ln=3)
+		pdf.multi_cell(16,line_height,f" G{str(personInfo[personlist[progress].name].groups[event])}  |  {personInfo[personlist[progress].name].stationNumbers[event]}",border=1, ln=3)
 	else:
-		pdf.multi_cell(25,line_height,' ',border=1, ln=3)
-	# pdf.multi_cell(col_width,line_height,str(personInfo[personlist[progress].name].groups[event]),border=1, ln=3)
+		pdf.multi_cell(16,line_height,'  ',border=1, ln=3)
 
-	strlist = [str(val) if len(str(val)) ==1 else val[1:] for val in personInfo[personlist[progress].name].assignments[event]]
-	sttr = ','.join(strlist)
-	pdf.multi_cell(col_width,line_height,sttr,border=1, ln=3)
-	pdf.multi_cell(2,line_height,'',border=0, ln=3)
+	# assignments
+	judge = 'Dommer' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge'
+	scram = 'Blander' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Scrambler'
+	run = 'Løber' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Runner'
+
+	strlist = sorted([f'G{val}' if len(str(val)) ==1 else f'G{val[1:]}' for val in personInfo[personlist[progress].name].assignments[event]])
+	if strlist:
+		if strlist[0][1] in '123456789':
+			sttr = f"{judge} "+', '.join(strlist)
+		elif strlist[0][1] == 'S':
+			sstrlist = [val[0] + val[2:] for val in strlist]
+			sttr = f"{scram} " + ', '.join(sstrlist)
+			# print('s',sttr)
+		elif strlist[0][1] == 'R':
+			sstrlist = [val[0] + val[2:] for val in strlist]
+			sttr = f"{run} " + ', '.join(sstrlist)
+		else:
+			# print(strlist)
+			sttr = ', '.join(strlist)
+	else:
+		sttr = ', '.join(strlist)
+
+	pdf.multi_cell(28,line_height,sttr,border=1, ln=3)
+	pdf.multi_cell(4,line_height,'',border=0, ln=3)
 	if ln:
 		pdf.ln(line_height)
 
 def compCards(scheduleInfo,personInfo,outfile):
 	pdf = FPDF()
+	pdf.set_top_margin(4.5)
+	pdf.set_left_margin(4.5)
+	pdf.set_auto_page_break(False)
 	pdf.add_page()
 	pdf.add_font('DejaVu','', fname='fonts/DejaVuSansCondensed.ttf', uni=True)
-	pdf.set_font('DejaVu','',8)
+	pdf.add_font('DejaVub','', fname='fonts/DejaVuSansCondensed-Bold.ttf', uni=True)
+	pdf.set_font('DejaVu','',7)
 	# personInfo.sort(key=lambda x:x['name'])
 	personlist = [val for val in personInfo.values()]
 	personlist.sort(key=lambda x:x.name)
@@ -1075,12 +1128,18 @@ def compCards(scheduleInfo,personInfo,outfile):
 		for event_ in sevent:
 			event_list.append(event_)
 	while progress < len(personlist):
-		if pdf.get_y() > 190: # Potentially adjust this based on the amount of competitors
+		if pdf.get_y() > 220: # Potentially adjust this based on the amount of competitors
 			pdf.add_page()
 		if progress+2 < len(personlist):
 			writeNames(personlist,progress,False,pdf)
 			writeNames(personlist,progress+1,False,pdf)
 			writeNames(personlist,progress+2,True,pdf)
+			writeCompeteLine(personInfo,personlist,progress,False,pdf)
+			writeCompeteLine(personInfo,personlist,progress+1,False,pdf)
+			writeCompeteLine(personInfo,personlist,progress+2,True,pdf)
+			writeHeaderCards(personInfo,personlist,progress,False,pdf)
+			writeHeaderCards(personInfo,personlist,progress+1,False,pdf)
+			writeHeaderCards(personInfo,personlist,progress+2,True,pdf)
 			for event in event_list:
 				eventPatch(personInfo,personlist,progress,event,False,pdf)
 				eventPatch(personInfo,personlist,progress+1,event,False,pdf)
@@ -1089,13 +1148,20 @@ def compCards(scheduleInfo,personInfo,outfile):
 		elif progress+1 < len(personlist):
 			writeNames(personlist,progress,False,pdf)
 			writeNames(personlist,progress+1,True,pdf)
+			writeCompeteLine(personInfo,personlist,progress,False,pdf)
+			writeCompeteLine(personInfo,personlist,progress+1,True,pdf)
+			writeHeaderCards(personInfo,personlist,progress,False,pdf)
+			writeHeaderCards(personInfo,personlist,progress+1,True,pdf)
 			for event in event_list:
 				eventPatch(personInfo,personlist,progress,event,False,pdf)
 				eventPatch(personInfo,personlist,progress+1,event,True,pdf)
 		else:
 			writeNames(personlist,progress,True,pdf)
+			writeCompeteLine(personInfo,personlist,progress,True,pdf)
+			writeHeaderCards(personInfo,personlist,progress,True,pdf)
 			for event in event_list:
 				eventPatch(personInfo,personlist,progress,event,True,pdf)
+		pdf.ln(5)
 		progress +=3
 
 	pdf.output(outfile)
@@ -1211,17 +1277,18 @@ def main():
 	# Make a folder with the ones used in the file.
 	path = "../odsherred"
 	fil = open(f"{path}/wcif.json")
+
+	fixed = False # Bool 
+	stations = 20
+	combined = None
+	combined = combineEvents('666','777')
+
 	data = json.load(fil)
 	fil.close()
 	target = path+'/outfiles'
 	if not os.path.isdir(target):
 		os.mkdir(target)
 	# fil = open("../dåstrup/wcif.json")
-	
-	fixed = False # Bool 
-	stations = 20
-	combined = None
-	combined = combineEvents('666','777')
 
 	# if we want a unique name
 	filenameSave = ''
@@ -1256,33 +1323,13 @@ def main():
 	
 	CSVForScorecards(schedule,people,combined,f'{target}/{name}stationNumbers{filenameSave}.csv')
 	CSVForTimeLimits(schedule,people,combined,f'{target}/{name}timeLimits.csv')
-	print('h')
+	# print('h')
 	if not os.path.isdir("WCA_Scorecards"):
 		os.system('git clone https://github.com/Daniel-Anker-Hermansen/WCA_Scorecards.git')
 	os.chdir("WCA_Scorecards")
 
 	# get direct path from running 'whereis cargo'
-	os.system(f" /home/degdal/.cargo/bin/cargo run --release -- ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv")
+	os.system(f" /home/degdal/.cargo/bin/cargo run --release -- ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
 
 
 main()
-
-# checking overlaps
-#print(schedule.overlappingEvents)
-# for event in schedule.overlappingEvents:
-#     for group in schedule.groups[event]:
-#         for event2 in schedule.overlappingEvents:
-#             for group2 in schedule.groups[event2]:
-#                 g = schedule.groupTimes[event][group]
-#                 h = schedule.groupTimes[event2][group2]
-#                 print(event,group,event2,group2,schedule.groupTimeChecker(g,h))
-
-
-
-
-
-
-
-
-
-
