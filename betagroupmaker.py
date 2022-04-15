@@ -1,4 +1,5 @@
 import collections
+import os
 import json
 from datetime import datetime
 from copy import deepcopy
@@ -931,6 +932,7 @@ def convertCSV(scheduleInfo,personInfo,outfile,combined=None):
 		header+=pString+'\n'
 	writeCSVf = open(outfile,'w')
 	print(header,file=writeCSVf)
+	writeCSVf.close()
 
 def makePDFOverview(scheduleInfo,outfile):
 	pdf = FPDF('p','mm', 'A4')
@@ -1040,7 +1042,9 @@ def eventPatch(personInfo,personlist,progress,event,ln,pdf):
 	'skewb':'Skewb','clock':'Clock','555bf':'5BLD','444bf':'4BLD','sq1':'Square-1'}
 	line_height = pdf.font_size *2
 	col_width = pdf.epw / 10
-	
+	# print(dir(pdf))
+	# if pdf.get_y() > 200:
+
 	pdf.multi_cell(col_width,line_height,translate[event],border=1, ln=3)
 
 	if event in personInfo[personlist[progress].name].groups:
@@ -1056,7 +1060,7 @@ def eventPatch(personInfo,personlist,progress,event,ln,pdf):
 	if ln:
 		pdf.ln(line_height)
 
-def compCards(scheduleInfo,personInfo):
+def compCards(scheduleInfo,personInfo,outfile):
 	pdf = FPDF()
 	pdf.add_page()
 	pdf.add_font('DejaVu','', fname='fonts/DejaVuSansCondensed.ttf', uni=True)
@@ -1071,7 +1075,8 @@ def compCards(scheduleInfo,personInfo):
 		for event_ in sevent:
 			event_list.append(event_)
 	while progress < len(personlist):
-		
+		if pdf.get_y() > 190: # Potentially adjust this based on the amount of competitors
+			pdf.add_page()
 		if progress+2 < len(personlist):
 			writeNames(personlist,progress,False,pdf)
 			writeNames(personlist,progress+1,False,pdf)
@@ -1092,20 +1097,10 @@ def compCards(scheduleInfo,personInfo):
 			for event in event_list:
 				eventPatch(personInfo,personlist,progress,event,True,pdf)
 		progress +=3
-	# for idx,person in enumerate(personlist):
-	# 	print(person.name)
-	# 	if (idx+1)%split == 0:
-	# 		pdf.ln(line_height)
-	
-	# for idx,person in enumerate(personInfo):
-	# 	pdf.cell(45,9,f'{person.name}, {person.id}')
-	# 	pdf.multi_cell(col_width,line_height,person,border=1, ln=3)
-	# 	if (idx+1)%split == 0:
-	# 		pdf.ln(line_height)
-			# personInfo[person].groups[event]
-	pdf.output('tabletry.pdf')
 
-def getRegList(personInfo):
+	pdf.output(outfile)
+
+def getRegList(personInfo,outfile):
 	pdf = FPDF()
 	pdf.add_page()
 	pdf.add_font('DejaVu','', fname='fonts/DejaVuSansCondensed.ttf', uni=True)
@@ -1127,7 +1122,7 @@ def getRegList(personInfo):
 			pdf.multi_cell(col_width,line_height,'DSF medlem?',border=1, ln=3)
 			pdf.multi_cell(10,line_height,' ',border=1, ln=3)
 		pdf.ln(line_height)
-	pdf.output('checkinlist.pdf')
+	pdf.output(outfile)
 
 def getStationNumbers(scheduleInfo,personInfo,combined):
 	for event in scheduleInfo.eventWOTimes:
@@ -1171,6 +1166,7 @@ def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
 		header+=pString+'\n'
 	writeCSVf = open(outfile,'w')
 	print(header,file=writeCSVf)
+	writeCSVf.close()
 
 def CSVForTimeLimits(scheduleInfo,personInfo,combined,outfile):
 	header = ''
@@ -1205,22 +1201,33 @@ def CSVForTimeLimits(scheduleInfo,personInfo,combined,outfile):
 		elif c:
 			header += f"K;{c['attemptResult']};{t['centiseconds']},"
 	header = header[:-1]
-	print(header)
 	writeCSVf = open(outfile,'w')
 	print(header,file=writeCSVf)
+	writeCSVf.close()
 
 def main():
 	# Download the file from here (Replace the comp id): https://www.worldcubeassociation.org/api/v0/competitions/VestkystCubing2021/wcif
 	# Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 	# Make a folder with the ones used in the file.
-	fil = open("../odsherred/wcif.json")
+	path = "../odsherred"
+	fil = open(f"{path}/wcif.json")
+	data = json.load(fil)
+	fil.close()
+	target = path+'/outfiles'
+	if not os.path.isdir(target):
+		os.mkdir(target)
 	# fil = open("../dåstrup/wcif.json")
 	
 	fixed = False # Bool 
 	stations = 20
 	combined = None
 	combined = combineEvents('666','777')
-	data = json.load(fil)
+
+	# if we want a unique name
+	filenameSave = ''
+	# filenameSave = str(datetime.now().strftime("%m%d_%T")).replace(':','').replace('/','')
+	
+	########
 	
 	people,organizers,delegates = competitorBasicInfo(data)
 	
@@ -1239,19 +1246,23 @@ def main():
 
 	reassignJudges(schedule,people,set_sblacklist,fixed)
 
-	filenameSave = str(datetime.now().strftime("%m%d_%T")).replace(':','').replace('/','') # Ensure unique name
-
 	name = schedule.name
-	convertCSV(schedule,people,f'out/{name}Groups{filenameSave}.csv',combined=combined)
+	convertCSV(schedule,people,f'{target}/{name}Groups{filenameSave}.csv',combined=combined)
 	getStationNumbers(schedule,people,combined)
-	makePDFOverview(schedule,f'out/{name}Overview{filenameSave}.pdf')
+	makePDFOverview(schedule,f'{target}/{name}Overview{filenameSave}.pdf')
 
-	compCards(schedule,people)
-	getRegList(people)
+	compCards(schedule,people,f'{target}/{name}compCards{filenameSave}.pdf')
+	getRegList(people,f'{target}/{name}CheckinList.pdf')
 	
-	CSVForScorecards(schedule,people,combined,f'out/{name}stationNumbers{filenameSave}.csv')
-	CSVForTimeLimits(schedule,people,combined,f'out/{name}timeLimits.csv')
-	# makePDFCards(schedule,people,f'out/{name}Cards{filenameSave}.pdf') # not made
+	CSVForScorecards(schedule,people,combined,f'{target}/{name}stationNumbers{filenameSave}.csv')
+	CSVForTimeLimits(schedule,people,combined,f'{target}/{name}timeLimits.csv')
+	print('h')
+	if not os.path.isdir("WCA_Scorecards"):
+		os.system('git clone https://github.com/Daniel-Anker-Hermansen/WCA_Scorecards.git')
+	os.chdir("WCA_Scorecards")
+
+	# get direct path from running 'whereis cargo'
+	os.system(f" /home/degdal/.cargo/bin/cargo run --release -- ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv")
 
 
 main()
