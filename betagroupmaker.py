@@ -155,10 +155,10 @@ class Schedule():
 					personInfo[person].prs[combinedEvents] = personInfo[person].prs[comSplit[0]] + personInfo[person].prs[comSplit[1]]
 			self.eventCompetitors[event].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
 
-	def orderForStations(self,personInfo): # For stations
-		for event in self.eventCompetitors:
-			for group in self.groups[event]:
-				self.groups[event][group].sort(key=lambda x:personInfo[x].prs[event])
+	# def orderForStations(self,personInfo): # For stations
+	# 	for event in self.eventCompetitors:
+	# 		for group in self.groups[event]:
+	# 			self.groups[event][group].sort(key=lambda x:personInfo[x].prs[event])
 
 	def getIndividualGroupTimes(self):
 		for event in self.groups:
@@ -1049,7 +1049,7 @@ def writeNames(personlist,progress,ln,pdf):
 
 def writeCompeteLine(personInfo,personlist,progress,ln,pdf):
 	pdf.set_font('DejaVu','',6)
-	compete = 'Deltager' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Competitor'
+	compete = 'Deltager (Gælder kun for første runder)' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Competitor (Only applies for first rounds)'
 	pdf.cell(19.5,2.3,'')
 	pdf.cell(16.5,2.3,compete)
 	pdf.cell(30.5,2.3,'',ln=ln)
@@ -1078,7 +1078,10 @@ def eventPatch(personInfo,personlist,progress,event,ln,pdf):
 
 	# Group and station
 	if event in personInfo[personlist[progress].name].groups:
-		pdf.multi_cell(16,line_height,f" G{str(personInfo[personlist[progress].name].groups[event])}  |  {personInfo[personlist[progress].name].stationNumbers[event]}",border=1, ln=3)
+		if personInfo[personlist[progress].name].stationNumbers[event] < 10:
+			pdf.multi_cell(16,line_height,f" G{str(personInfo[personlist[progress].name].groups[event])}  |  {personInfo[personlist[progress].name].stationNumbers[event]} ",border=1, ln=3)
+		else:
+			pdf.multi_cell(16,line_height,f" G{str(personInfo[personlist[progress].name].groups[event])}  |  {personInfo[personlist[progress].name].stationNumbers[event]}",border=1, ln=3)
 	else:
 		pdf.multi_cell(16,line_height,'  ',border=1, ln=3)
 
@@ -1104,7 +1107,7 @@ def eventPatch(personInfo,personlist,progress,event,ln,pdf):
 	else:
 		sttr = ', '.join(strlist)
 
-	pdf.multi_cell(28,line_height,sttr,border=1, ln=3)
+	pdf.multi_cell(28,line_height,sttr,border=1, ln=3,align='R')
 	pdf.multi_cell(4,line_height,'',border=0, ln=3)
 	if ln:
 		pdf.ln(line_height)
@@ -1123,8 +1126,9 @@ def compCards(scheduleInfo,personInfo,outfile):
 	personlist.sort(key=lambda x:x.name)
 	progress = 0
 	event_list = []
-	for event in scheduleInfo.eventWOTimes:
-		sevent = event.split('-')
+	for event in scheduleInfo.events:
+		sevent = event[0].split('-')
+		# print(sevent)
 		for event_ in sevent:
 			event_list.append(event_)
 	while progress < len(personlist):
@@ -1209,7 +1213,7 @@ def getStationNumbers(scheduleInfo,personInfo,combined):
 				personInfo[person].stationNumbers.pop(combHy)
 
 def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
-	header = 'Name'
+	header = 'Name,Id'
 	combHy = combined[0]+'-'+combined[1]
 	for event in scheduleInfo.events:
 		if combined:
@@ -1222,9 +1226,11 @@ def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
 			header+=f',{event[0]}'
 	hCSV = header.split(',')
 	header+='\n'
+	# print(personInfo.items())
+	# personlist = [val[0] for val in sorted(personInfo.items(),key= lambda x:x[1].id)] # should not be needed, as it should be sorted already
 	for person in personInfo:
-		pString = str(person)
-		for event in hCSV:
+		pString = str(person) + ',' + str(personInfo[person].id)
+		for event in hCSV[1:]:
 			if event in personInfo[person].groups:
 				pString+=f"{personInfo[person].groups[event]};{personInfo[person].stationNumbers[event]}"
 			pString+=','
