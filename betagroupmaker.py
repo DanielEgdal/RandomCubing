@@ -648,7 +648,7 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
 		competitors = scheduleInfo.eventCompetitors[event]
 		maybePeople = scheduleInfo.inVenue[event]
 		atleast1 = set() # Make sure everyone judges at least once before giving two assignments to other people
-		if event not in ('555'):
+		if event not in ['no event here']: # force many judges
 			for competitor in competitors:
 				group_to_place = ((personInfo[competitor].groups[event]-2)%len(groups)) +1
 
@@ -1259,33 +1259,44 @@ def CSVForTimeLimits(scheduleInfo,personInfo,combined,outfile):
 	for event in hCSV:
 		# print('w,',event)
 		t, c = scheduleInfo.timelimits[event]
-		if (not t['cumulativeRoundIds']) and (not c):
-			header += f"T;{t['centiseconds']},"
-		elif len(t['cumulativeRoundIds']) > 1:
-			eventstring = ''
-			for tlevent in t['cumulativeRoundIds']:
-				eventstring += f";{tlevent.split('-')[0]}"
-			header += f"S;{t['centiseconds']}{eventstring}," # HHHHH
-		elif t['cumulativeRoundIds']:
-			for tlevent in t['cumulativeRoundIds']:
-				eventstring = f"{tlevent.split('-')[0]}"
-			header += f"C;{t['centiseconds']},"
-		elif c:
-			header += f"K;{c['attemptResult']};{t['centiseconds']},"
+		if t:
+			if (not t['cumulativeRoundIds']) and (not c):
+				header += f"T;{t['centiseconds']},"
+			elif len(t['cumulativeRoundIds']) > 1:
+				eventstring = ''
+				for tlevent in t['cumulativeRoundIds']:
+					eventstring += f";{tlevent.split('-')[0]}"
+				header += f"S;{t['centiseconds']}{eventstring}," # HHHHH
+			elif t['cumulativeRoundIds']:
+				for tlevent in t['cumulativeRoundIds']:
+					eventstring = f"{tlevent.split('-')[0]}"
+				header += f"C;{t['centiseconds']},"
+			elif c:
+				header += f"K;{c['attemptResult']};{t['centiseconds']},"
+		else: # multi bld
+			header += f"M,"
 	header = header[:-1]
 	writeCSVf = open(outfile,'w')
 	print(header,file=writeCSVf)
 	writeCSVf.close()
 
+def competitorForOTS(personInfo,name,id,citizenship,gender,wcaid,events,age):
+	comp = Competitor(name,id,citizenship,gender, wcaid)
+	for event in events:
+		comp.events.add(event)
+	comp.age = age
+	personInfo[name] = comp
+
+
 def main():
 	# Download the file from here (Replace the comp id): https://www.worldcubeassociation.org/api/v0/competitions/VestkystCubing2021/wcif
 	# Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 	# Make a folder with the ones used in the file.
-	path = "../odsherred"
+	path = "../ringsted"
 	fil = open(f"{path}/wcif.json")
 
 	fixed = False # Bool 
-	stations = 20
+	stations = 16
 	combined = None
 	combined = combineEvents('666','777')
 
@@ -1303,6 +1314,8 @@ def main():
 	########
 	
 	people,organizers,delegates = competitorBasicInfo(data)
+
+	# competitorForOTS(people,details...)
 	
 	# schedule = scheduleBasicInfo(data,people,organizers,stations,{'333bf':3},combined)
 	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,{'333bf':2},combinedEvents=combined)
@@ -1336,6 +1349,9 @@ def main():
 
 	# get direct path from running 'whereis cargo'
 	os.system(f" /home/degdal/.cargo/bin/cargo run --release -- ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
+	filenameToMove = "".join(schedule.longName.split(' '))
+	os.system(f'mv {filenameToMove}.pdf ../{target}/{filenameToMove}Scorecards.pdf')
+	# print(target)
 
 
 main()
