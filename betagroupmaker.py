@@ -208,24 +208,43 @@ def competitorBasicInfo(data):
 	for person in data['persons']:
 		try:
 			if person['registration']['status'] == 'accepted':
+				debuff = 0
 				competitor = Competitor(person["name"],person['registrantId'],person['countryIso2'],person['gender'],person['wcaId'])
 				for val in person["roles"]: # getOrga
 					if val in ('organizer','delegate','trainee-delegate'):
-						competitor.orga = 3 # Setting this for sorting by speed
+						competitor.orga = 1 # Setting this for sorting by speed
 						organizers.add(person['name'])
+						debuff = 1
 					if val in ('delegate','trainee-delegate'):
-						competitor.orga = 3 # Setting this for sorting by speed
+						competitor.orga = 1 # Setting this for sorting by speed
 						delegates.add(person['name'])
+						debuff = 1
 				competitor.age = year - int(person["birthdate"][:4]) #getAge
 				competitor.dob = person["birthdate"]
 
 				for eventData in person['personalBests']:
 					if eventData['eventId'] not in ('333fm','444bf','333bf','555bf'):
 						if eventData['type'] == 'average':
-							competitor.prs[eventData['eventId']] = int(eventData['best'])
+							if int(eventData['best']) < 200 and debuff:
+								temp = int(eventData['best'])*3
+							elif int(eventData['best']) < 2000 and debuff:
+								temp = int(eventData['best'])*2.3
+							elif debuff:
+								temp = int(eventData['best'])*1.5
+							else:
+								temp = int(eventData['best'])
+							competitor.prs[eventData['eventId']] = temp
 					else:
 						if eventData['type'] == 'single':
-							competitor.prs[eventData['eventId']] = int(eventData['best'])
+							if int(eventData['best']) < 200 and debuff:
+								temp = int(eventData['best'])*3
+							elif int(eventData['best']) < 2500 and debuff:
+								temp = int(eventData['best'])*2
+							elif debuff:
+								temp = int(eventData['best'])*1.5
+							else:
+								temp = int(eventData['best'])
+							competitor.prs[eventData['eventId']] = temp
 				for event in person['registration']['eventIds']:
 					competitor.events.add(event)
 				comp_dict[person["name"]] = competitor
@@ -407,10 +426,14 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,fixed=True):
 	groups = scheduleInfo.groups[event]
 	totalComp = scheduleInfo.eventCompetitors[event]
 	perGroup = len(totalComp)/len(groups)
-	if fixed:
-		scramblerCount = round(2/7*perGroup)
+	if event == '444': # manual amount of scramblers...
+		scramblerCount = 6
 	else:
-		scramblerCount = round(2/7*perGroup)
+		scramblerCount = 4
+	# if fixed:
+	# 	scramblerCount = round(2/7*perGroup)
+	# else:
+	# 	scramblerCount = round(2/7*perGroup)
 	p2 = deepcopy(totalComp)
 	# special stuff when there are multiple delegates
 	delegateCompetitors = [compDel for compDel in scheduleInfo.delegates if compDel in totalComp]
@@ -467,15 +490,24 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,fixed=True):
 			groups[groupNum].append(comp)
 			personInfo[comp].groups[event] = groupNum
 	else:
-		for groupNum in range(1,len(groups)+1):
-			# offsetScramblers = 0
+		# for groupNum in range(1,len(groups)+1):
+		if event in ['333','222','skewb','pyram']:
+			for groupNum in range(len(groups),0,-1):
+				for _ in range(1,scramblerCount+1): # taking best people, to ensure there are scramblers later (not all fast in same group)
+					comp = p2[0]
+					# print(comp,event,groupNum) # ...
+					p2 = p2[1:]
+					groups[groupNum].append(comp)
+					personInfo[comp].groups[event] = groupNum
+		else:
 			for _ in range(1,scramblerCount+1): # taking best people, to ensure there are scramblers later (not all fast in same group)
-				# comp = p2[offsetScramblers]
-				comp = p2[0]
-				p2 = p2[1:]
-				groups[groupNum].append(comp)
-				personInfo[comp].groups[event] = groupNum
-				# offsetScramblers +=1
+				for groupNum in range(len(groups),0,-1):
+					comp = p2[0]
+					# print(comp,event,groupNum) # ...
+					p2 = p2[1:]
+					groups[groupNum].append(comp)
+					personInfo[comp].groups[event] = groupNum
+		for groupNum in range(len(groups),0,-1):
 			while len(groups[groupNum]) < perGroup and len(p2) > 0: # Assigning slowest first
 				comp = p2[-1]
 				p2 = p2[:-1]
@@ -585,7 +617,7 @@ def splitIntoGroups(scheduleInfo,personInfo,fixed=True):
 
 	return scheduleInfo, personInfo # For some reason it does not update the variables
 
-def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs fixing. Assigns judge multiple times in same event
+def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True):
 	if fixedSeating:
 		scheduleInfo.groupJudges[event] = {}
 		groups = scheduleInfo.groups[event]
@@ -596,15 +628,15 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
 			pq = MaxPQ()
 			scheduleInfo.groupJudges[event][groupNum] = []
 			if event!= '333bf':
-				needed = len(scheduleInfo.groups[event][groupNum]) + np.min([round(2/7*(len(scheduleInfo.groups[event][groupNum]))) +1,6])
+				needed = len(scheduleInfo.groups[event][groupNum]) + np.min([round(3/7*(len(scheduleInfo.groups[event][groupNum]))) +1,4])
 			else:
-				needed = len(scheduleInfo.groups[event][groupNum]) + np.min([round(2/7*(len(scheduleInfo.groups[event][groupNum]))) +1,4])
+				needed = len(scheduleInfo.groups[event][groupNum]) + np.min([round(3/7*(len(scheduleInfo.groups[event][groupNum]))) +1,4])
 			used = set() # those that were already tried
 			for comp in competitors: # First, get only the people who haven't judged in the event
-				if comp not in scheduleInfo.organizers:
+				if comp not in scheduleInfo.delegates:
 					if comp not in scheduleInfo.groups[event][groupNum]:
 						if comp not in atleast1:
-							pq.insert([comp,math.log((len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+							pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 			while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 					judge = pq.del_max()[0]
 					personInfo[judge].totalAssignments +=1
@@ -615,9 +647,9 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
 			
 			if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 				for comp in competitors: # second try competitors in the event
-					if comp not in used and comp not in scheduleInfo.organizers:
+					if comp not in used and comp not in scheduleInfo.delegates:
 						if comp not in scheduleInfo.groups[event][groupNum]:
-							pq.insert([comp,math.log((len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+							pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 					judge = pq.del_max()[0]
 					personInfo[judge].totalAssignments +=1
@@ -629,10 +661,10 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
 			if len(scheduleInfo.groupJudges[event][groupNum]) < needed: # If more people are needed, try all in the venue
 				for comp in maybePeople:
 					if comp not in used and not comp in scheduleInfo.groups[event][groupNum]:
-						if comp in scheduleInfo.organizers:
+						if comp in scheduleInfo.delegates:
 							pq.insert([comp,0])
 						else:
-							pq.insert([comp,(math.log(len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+							pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
 					judge = pq.del_max()[0]
 					personInfo[judge].totalAssignments +=1
@@ -668,10 +700,10 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
 				used = set() # those that were already tried
 
 				for comp in competitors: # First, get only the people who haven't judged in the event
-					if comp not in scheduleInfo.organizers:
+					if comp not in scheduleInfo.delegates:
 						if comp not in scheduleInfo.groups[event][groupNum]:
 							if comp not in atleast1:
-								pq.insert([comp,math.log((len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+								pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 						judge = pq.del_max()[0]
 						personInfo[judge].totalAssignments +=1
@@ -682,9 +714,9 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
 				
 				if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 					for comp in competitors: # second try competitors in the event
-						if comp not in used and comp not in scheduleInfo.organizers:
+						if comp not in used and comp not in scheduleInfo.delegates:
 							if comp not in scheduleInfo.groups[event][groupNum]:
-								pq.insert([comp,math.log((len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+								pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 					while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 						judge = pq.del_max()[0]
 						personInfo[judge].totalAssignments +=1
@@ -696,10 +728,10 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True): ## Needs
 				if len(scheduleInfo.groupJudges[event][groupNum]) < needed: # If more people are needed, try all in the venue
 					for comp in maybePeople:
 						if comp not in used and not comp in scheduleInfo.groups[event][groupNum]:
-							if comp in scheduleInfo.organizers:
+							if comp in scheduleInfo.delegates:
 								pq.insert([comp,0])
 							else:
-								pq.insert([comp,(math.log(len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+								pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 					while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
 						judge = pq.del_max()[0]
 						personInfo[judge].totalAssignments +=1
@@ -722,7 +754,7 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 				needed = len(scheduleInfo.groups[event][groupNum]) + min(round(3/7*(len(scheduleInfo.groups[event][groupNum]))) +1,1)
 				used = set() # those that were already tried
 				for comp in competitors:
-					if comp not in scheduleInfo.organizers:
+					if comp not in scheduleInfo.delegates:
 						used.add(comp)
 						if comp not in scheduleInfo.groups[event][groupNum]: # Check they aren't competing in overlapping group
 							checkLegal = True
@@ -740,7 +772,7 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 										else:
 											checkLegal = False
 							if checkLegal:
-								pq.insert([comp,(math.log(len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+								pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
 					judge = pq.del_max()[0]
 					personInfo[judge].totalAssignments +=1
@@ -764,10 +796,10 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 										else:
 											checkLegal = False
 							if checkLegal:
-								if comp in scheduleInfo.organizers:
+								if comp in scheduleInfo.delegates:
 									pq.insert([comp,0])
 								else:
-									pq.insert([comp,(math.log(len(personInfo[comp].events)))/personInfo[comp].totalAssignments])
+									pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 					while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
 						judge = pq.del_max()[0]
 						personInfo[judge].totalAssignments +=1
@@ -778,117 +810,198 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 						# print(f"Not possible for {event} group {groupNum}. Got {len(scheduleInfo.groupJudges[event][groupNum])} of {needed}")
 		return missing
 
-def assignJudges(scheduleInfo,personInfo,fixedSeating= True,dontAssign=True):
+def assignJudges(scheduleInfo,personInfo,fixedSeating= True,dontAssign=True,mixed={}):
 	if dontAssign: # Don't assign judges when there is only one group
 		for event in scheduleInfo.events:
 			if len(scheduleInfo.groups[event[0]]) > 1:
 				if event[0] not in scheduleInfo.overlappingEvents:
-					judgePQNonOverlap(event[0],scheduleInfo,personInfo,fixedSeating)
+					if mixed:
+						if event[0] in mixed:
+							judgePQNonOverlap(event[0],scheduleInfo,personInfo,True)
+						else:
+							judgePQNonOverlap(event[0],scheduleInfo,personInfo,False)
+					else:
+						judgePQNonOverlap(event[0],scheduleInfo,personInfo,fixedSeating)
 	else:
 		for event in scheduleInfo.events:
 			if event[0] not in scheduleInfo.overlappingEvents:
-				judgePQNonOverlap(event[0],scheduleInfo,personInfo,fixedSeating)
+				if mixed:
+					if event[0] in mixed:
+						judgePQNonOverlap(event[0],scheduleInfo,personInfo,True)
+					else:
+						judgePQNonOverlap(event[0],scheduleInfo,personInfo,False)
+				else:
+					judgePQNonOverlap(event[0],scheduleInfo,personInfo,fixedSeating)
 
-def reassignJudges(scheduleInfo,personInfo,blacklist = {None},fixed=True):
+def reassignJudges(scheduleInfo,personInfo,blacklist = {None},fixed=True, mixed={}):
+	for event in scheduleInfo.groups:
+		scheduleInfo.groupScramblers[event] = {}
+		scheduleInfo.groupRunners[event] = {}
+		if mixed:
+			if event in mixed:
+				reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist,True)
+			else:
+				reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist,False)
+		else:
+			reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist,fixed)
+		
+def reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist = {None},fixed=True):
+	# print('getting scram',event,group,len(scheduleInfo.groups[event][group]),len(scheduleInfo.groupJudges[event][group]),len(scheduleInfo.groupScramblers[event][group]),len(scheduleInfo.groupRunners[event][group]))
+	scheduleInfo.groupJudges[event][group].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
+	scrambler = ''
+	passed = False
+	justBroke = False
+	# print('overview',scheduleInfo.groupJudges[event][group])
+	for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
+		justBroke = False
+		if personInfo[potScram].age > 12 and potScram not in blacklist: # Arguably can be set lower/higher for min
+			for idx,g in enumerate(personInfo[potScram].assignments[event]):
+				# print(g,'group',potScram)
+				if type(g)==str:
+					gg = int(g[2:])
+				else:
+					gg =g
+				if gg < group:
+					# print('checkval',group,personInfo[potScram].assignments[event][idx],potScram,event,group)
+					if personInfo[potScram].assignments[event][idx] != f';S{group}':
+						# print('breaked',potScram)
+						justBroke = True
+						break
+			if not justBroke:
+				passed = True
+				scrambler = potScram
+				# print('got here?',potScram)
+				break
+		elif passed:
+			break
+	if not passed:
+		scrambler = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
+		print('passing scram',group,event,scrambler)
+	# print(scrambler,event,group,personInfo[scrambler].assignments[event],'here')
+	for idx,g in enumerate(personInfo[scrambler].assignments[event]):
+		if type(g)==str:
+			gg = int(g[2:])
+		else:
+			gg =g
+		if gg >= group:
+		# print(scrambler,event,g)
+		# print(scheduleInfo.groupScramblers[event])
+			scheduleInfo.groupJudges[event][g].remove(scrambler)
+			scheduleInfo.groupScramblers[event][g].append(scrambler)
+			personInfo[scrambler].assignments[event][idx] = f';S{g}'
+
+def reassignToRunner(event,group,scheduleInfo,personInfo,blacklist = {None},fixed=True):
+	# print('getting runner',event,group,len(scheduleInfo.groups[event][group]),len(scheduleInfo.groupJudges[event][group]),len(scheduleInfo.groupScramblers[event][group]),len(scheduleInfo.groupRunners[event][group]))
+	scheduleInfo.groupJudges[event][group].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
+	runner = ''
+	passed = False
+	justBroke = False
+	# print('overview',scheduleInfo.groupJudges[event][group])
+	for potRun in scheduleInfo.groupJudges[event][group][::-1]: # Take slowest first
+		justBroke = False
+		if personInfo[potRun].age > 10 and personInfo[potRun].age < 40 and potRun not in blacklist: # Arguably can be set lower/higher for min
+			# print(potRun)
+			for idx,g in enumerate(personInfo[potRun].assignments[event]):
+				# print(potRun)
+				if type(g)==str:
+					gg = int(g[2:])
+				else:
+					gg =g
+				if gg < group:
+					# print('checkval',group,personInfo[potRun].assignments[event][idx],potRun,event,group)
+					if personInfo[potRun].assignments[event][idx] != f';R{group}':
+						# print('breaked',potRun)
+						justBroke = True
+						break
+			if not justBroke:
+				passed = True
+				runner = potRun
+				break
+		elif passed:
+			break
+	if not passed:
+		runner = scheduleInfo.groupJudges[event][group][-1] # Take the fastest if no one is old enough
+		print('passing run',runner,event,group)
+	# print(runner,event,group,personInfo[runner].assignments[event],'here')
+	for idx,g in enumerate(personInfo[runner].assignments[event]):
+		if type(g)==str:
+			gg = int(g[2:])
+		else:
+			gg =g
+		if gg >= group:
+			scheduleInfo.groupJudges[event][g].remove(runner)
+			scheduleInfo.groupRunners[event][g].append(runner)
+			personInfo[runner].assignments[event][idx] = f';R{g}'
+
+def reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist = {None},fixed=True): # Adjusting to mixing
 	if fixed:
-		for event in scheduleInfo.groups:
-			scheduleInfo.groupScramblers[event] = {}
-			scheduleInfo.groupRunners[event] = {}
-			for group in scheduleInfo.groups[event]:
-				scheduleInfo.groupScramblers[event][group] = []
-				scheduleInfo.groupRunners[event][group] = []
-				if event in scheduleInfo.groupJudges:
-					if len(scheduleInfo.groupJudges[event][group]) > 0: # If judges are assigned for the event
-						# Always at least one scrambler
-						passed = False
-						scheduleInfo.groupJudges[event][group].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
-						for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
-							if personInfo[potScram].age > 14 and potScram not in blacklist: # Arguably can be set lower/higher for min
-								passed = True
-								break
-						if not passed:
-							potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
-						scheduleInfo.groupJudges[event][group].remove(potScram)
-						scheduleInfo.groupScramblers[event][group].append(potScram)
-						for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
-							if assignment == group:
-								personInfo[potScram].assignments[event][idx] = f';S{group}'
-						
-						runSc = 1 # If divisible by 2 make scrambler, otherwise runner
-						# Alternate runner/scrambler. Only continue if there is enough judges available
-						while len(scheduleInfo.groups[event][group])< len(scheduleInfo.groupJudges[event][group]):
-							if runSc%2 == 0:
-								# scrmbler stuff
-								passed = False
-								for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
-									if personInfo[potScram].age > 14 and potScram not in blacklist: # Arguably can be set lower/higher for min
-										passed = True
-										break
-								if not passed:
-									potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
-								scheduleInfo.groupJudges[event][group].remove(potScram)
-								scheduleInfo.groupScramblers[event][group].append(potScram)
-								for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
-									if assignment == group:
-										personInfo[potScram].assignments[event][idx] = f';S{group}'
-							else: # Runners
-								passed = False
-								for potRun in scheduleInfo.groupJudges[event][group][::-1]: # Take slowest first
-									if personInfo[potRun].age > 14 and personInfo[potRun].age < 40 and potRun not in blacklist: # Arguably can be set to lower/higher for min/max
-										passed = True
-										break
-								if not passed:
-									potRun = scheduleInfo.groupJudges[event][group][-1]
-								scheduleInfo.groupJudges[event][group].remove(potRun)
-								scheduleInfo.groupRunners[event][group].append(potRun)
-								for idx,assignment in enumerate(personInfo[potRun].assignments[event]):
-									if assignment == group:
-										personInfo[potRun].assignments[event][idx] = f';R{group}'
-							runSc += 1
-	else:
-		for event in scheduleInfo.groups:
-			scheduleInfo.groupScramblers[event] = {}
-			scheduleInfo.groupRunners[event] = {}
-			for group in scheduleInfo.groups[event]:
-				scheduleInfo.groupScramblers[event][group] = []
-				scheduleInfo.groupRunners[event][group] = []
-				if event in scheduleInfo.groupJudges:
-					if len(scheduleInfo.groupJudges[event][group]) > 0: # If judges are assigned for the event
-						# Always at least one scrambler
-						passed = False
-						scheduleInfo.groupJudges[event][group].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
-						for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
-							if personInfo[potScram].age > 14 and potScram not in blacklist: # Arguably can be set lower/higher for min
-								passed = True
-								break
-						if not passed:
-							potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
-						scheduleInfo.groupJudges[event][group].remove(potScram)
-						scheduleInfo.groupScramblers[event][group].append(potScram)
-						for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
-							if assignment == group:
-								personInfo[potScram].assignments[event][idx] = f';S{group}'
-						
-						# Just scramblers, continue until you have enough
-						am_scramblers = 4
-						if event == 'sq1':
-							am_scramblers = 2
-						elif event == '333bf':
-							am_scramblers = 0
-						while am_scramblers> len(scheduleInfo.groupScramblers[event][group]):
+		for group in scheduleInfo.groups[event]:
+			scheduleInfo.groupScramblers[event][group] = []
+			scheduleInfo.groupRunners[event][group] = []
+		for group in scheduleInfo.groups[event]:
+			if event in scheduleInfo.groupJudges:
+				if len(scheduleInfo.groupJudges[event][group]) > 0: # If judges are assigned for the event
+					# Always at least one scrambler
+					if len(scheduleInfo.groupScramblers[event][group]) <= len(scheduleInfo.groupRunners[event][group]):
+						reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist,fixed)
+					# Alternate runner/scrambler. Only continue if there is enough judges available
+					# print(len(scheduleInfo.groups[event][group]),len(scheduleInfo.groupJudges[event][group]))
+					while len(scheduleInfo.groups[event][group])< len(scheduleInfo.groupJudges[event][group]): # Scramblers
+						# print(event,group,len(scheduleInfo.groups[event][group]),len(scheduleInfo.groupJudges[event][group]),len(scheduleInfo.groupScramblers[event][group]),len(scheduleInfo.groupRunners[event][group]))
+						if len(scheduleInfo.groupScramblers[event][group]) <= len(scheduleInfo.groupRunners[event][group]):
 							# scrmbler stuff
-							passed = False
-							for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
-								if personInfo[potScram].age > 14 and potScram not in blacklist: # Arguably can be set lower/higher for min
-									passed = True
-									break
-							if not passed:
-								potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
-							scheduleInfo.groupJudges[event][group].remove(potScram)
-							scheduleInfo.groupScramblers[event][group].append(potScram)
-							for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
-								if assignment == group:
-									personInfo[potScram].assignments[event][idx] = f';S{group}'
+							# print('getting scram',event,group,len(scheduleInfo.groups[event][group]),len(scheduleInfo.groupJudges[event][group]),len(scheduleInfo.groupScramblers[event][group]),len(scheduleInfo.groupRunners[event][group]))
+							reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist,fixed)
+						else: # Runners
+							# print('getting runner',event,group,len(scheduleInfo.groups[event][group]),len(scheduleInfo.groupJudges[event][group]),len(scheduleInfo.groupScramblers[event][group]),len(scheduleInfo.groupRunners[event][group]))
+							reassignToRunner(event,group,scheduleInfo,personInfo,blacklist,fixed)
+	else: ####
+		for group in scheduleInfo.groups[event]:
+			scheduleInfo.groupScramblers[event][group] = []
+			scheduleInfo.groupRunners[event][group] = []
+		for group in scheduleInfo.groups[event]:
+			if event in scheduleInfo.groupJudges:
+				if len(scheduleInfo.groupJudges[event][group]) > 0: # If judges are assigned for the event
+					# Always at least one scrambler
+					passed = False
+					for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
+						if personInfo[potScram].age > 14 and potScram not in blacklist: # Arguably can be set lower/higher for min
+							passed = True
+							break
+					if not passed:
+						potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
+					# print('orignal',potScram,event,group)
+					scheduleInfo.groupJudges[event][group].remove(potScram)
+					scheduleInfo.groupScramblers[event][group].append(potScram)
+					for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
+						if assignment == group:
+							personInfo[potScram].assignments[event][idx] = f';S{group}'
+					
+					# Just scramblers, continue until you have enough
+					am_scramblers = 2 # Manual amount of scramblers...
+					if event == 'sq1':
+						am_scramblers = 2
+					elif event == '333bf':
+						am_scramblers = 0
+					elif event=='444':
+						am_scramblers = 2
+					while am_scramblers> len(scheduleInfo.groupScramblers[event][group]):
+						# scrmbler stuff
+						passed = False
+						for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
+							if personInfo[potScram].age > 10 and potScram not in blacklist: # Arguably can be set lower/higher for min
+								passed = True
+								break
+						if not passed:
+							print('somehow')
+							potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
+						# print('a',potScram,event,group)
+						scheduleInfo.groupJudges[event][group].remove(potScram)
+						scheduleInfo.groupScramblers[event][group].append(potScram)
+						# print(scheduleInfo.groupScramblers[event][group])
+						for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
+							if assignment == group:
+								personInfo[potScram].assignments[event][idx] = f';S{group}'
 
 def convertCSV(scheduleInfo,personInfo,outfile,combined=None):
 	"""
@@ -1019,6 +1132,10 @@ def makePDFOverview(scheduleInfo,outfile):
 					elif len(competitors) > i and len(judges) > i: # Enough judges and competitors for now
 						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}')
 						pdf.cell(45,9,f'{judges[i]}',ln=True)
+					elif len(competitors) > i and len(scramblers) > i: # If there are more scramblers than judges
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}')
+						pdf.cell(45,9)
+						pdf.cell(45,9,f'{scramblers[i]}',ln=True)
 					elif len(judges) > i: # only used in case there is 'bonus judge'
 						pdf.cell(45,9,f'-')
 						pdf.cell(45,9,f'{judges[i]}',ln=True)
@@ -1065,7 +1182,7 @@ def writeHeaderCards(personInfo,personlist,progress,ln,pdf):
 	pdf.cell(8,2,table)
 	pdf.cell(31.5,2,helping,ln=ln)
 
-def eventPatch(personInfo,personlist,progress,event,ln,pdf):
+def eventPatch(personInfo,personlist,progress,event,ln,pdf,mixed={}):
 	translate = {'333':'3x3','222':'2x2','444':'4x4','555':'5x5','666':'6x6','777':'7x7',
 	'333oh':'3x3 OH','333fm':'333fm','333mbf':'Multi','333bf':'3BLD','minx':'Megaminx','pyram':'Pyraminx',
 	'skewb':'Skewb','clock':'Clock','555bf':'5BLD','444bf':'4BLD','sq1':'Square-1'}
@@ -1086,20 +1203,27 @@ def eventPatch(personInfo,personlist,progress,event,ln,pdf):
 		pdf.multi_cell(16,line_height,'  ',border=1, ln=3)
 
 	# assignments
-	judge = 'Dommer' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge'
-	scram = 'Blander' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Scrambler'
-	run = 'Løber' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Runner'
+	if mixed:
+		if event in mixed:
+			judge = 'Døm(sid):' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge(sit):'
+		else:
+			judge = 'Døm(løb):' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge(run):'
+	else:
+		judge = 'Døm:' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge:'
+	scram = 'Bland:' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Scramb:'
+	run = 'Løb:' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Run:'
 
-	strlist = sorted([f'G{val}' if len(str(val)) ==1 else f'G{val[1:]}' for val in personInfo[personlist[progress].name].assignments[event]])
+	strlist = sorted([f'{val}' if len(str(val)) ==1 else f'{val[1:]}' for val in personInfo[personlist[progress].name].assignments[event]])
+	# print(strlist)
 	if strlist:
-		if strlist[0][1] in '123456789':
+		if str(strlist[0][0]) in '123456789':
 			sttr = f"{judge} "+', '.join(strlist)
-		elif strlist[0][1] == 'S':
-			sstrlist = [val[0] + val[2:] for val in strlist]
+		elif strlist[0][0] == 'S':
+			sstrlist = [val[1:] for val in strlist]
 			sttr = f"{scram} " + ', '.join(sstrlist)
 			# print('s',sttr)
-		elif strlist[0][1] == 'R':
-			sstrlist = [val[0] + val[2:] for val in strlist]
+		elif strlist[0][0] == 'R':
+			sstrlist = [val[1:] for val in strlist]
 			sttr = f"{run} " + ', '.join(sstrlist)
 		else:
 			# print(strlist)
@@ -1112,7 +1236,7 @@ def eventPatch(personInfo,personlist,progress,event,ln,pdf):
 	if ln:
 		pdf.ln(line_height)
 
-def compCards(scheduleInfo,personInfo,outfile):
+def compCards(scheduleInfo,personInfo,outfile,mixed={}):
 	pdf = FPDF()
 	pdf.set_top_margin(4.5)
 	pdf.set_left_margin(4.5)
@@ -1145,9 +1269,9 @@ def compCards(scheduleInfo,personInfo,outfile):
 			writeHeaderCards(personInfo,personlist,progress+1,False,pdf)
 			writeHeaderCards(personInfo,personlist,progress+2,True,pdf)
 			for event in event_list:
-				eventPatch(personInfo,personlist,progress,event,False,pdf)
-				eventPatch(personInfo,personlist,progress+1,event,False,pdf)
-				eventPatch(personInfo,personlist,progress+2,event,True,pdf)
+				eventPatch(personInfo,personlist,progress,event,False,pdf,mixed)
+				eventPatch(personInfo,personlist,progress+1,event,False,pdf,mixed)
+				eventPatch(personInfo,personlist,progress+2,event,True,pdf,mixed)
 
 		elif progress+1 < len(personlist):
 			writeNames(personlist,progress,False,pdf)
@@ -1157,14 +1281,14 @@ def compCards(scheduleInfo,personInfo,outfile):
 			writeHeaderCards(personInfo,personlist,progress,False,pdf)
 			writeHeaderCards(personInfo,personlist,progress+1,True,pdf)
 			for event in event_list:
-				eventPatch(personInfo,personlist,progress,event,False,pdf)
-				eventPatch(personInfo,personlist,progress+1,event,True,pdf)
+				eventPatch(personInfo,personlist,progress,event,False,pdf,mixed)
+				eventPatch(personInfo,personlist,progress+1,event,True,pdf,mixed)
 		else:
 			writeNames(personlist,progress,True,pdf)
 			writeCompeteLine(personInfo,personlist,progress,True,pdf)
 			writeHeaderCards(personInfo,personlist,progress,True,pdf)
 			for event in event_list:
-				eventPatch(personInfo,personlist,progress,event,True,pdf)
+				eventPatch(personInfo,personlist,progress,event,True,pdf,mixed)
 		pdf.ln(5)
 		progress +=3
 
@@ -1214,7 +1338,8 @@ def getStationNumbers(scheduleInfo,personInfo,combined):
 
 def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
 	header = 'Name,Id'
-	combHy = combined[0]+'-'+combined[1]
+	if combined:
+		combHy = combined[0]+'-'+combined[1]
 	for event in scheduleInfo.events:
 		if combined:
 			if event[0] == combHy:
@@ -1242,7 +1367,8 @@ def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
 
 def CSVForTimeLimits(scheduleInfo,personInfo,combined,outfile):
 	header = ''
-	combHy = combined[0]+'-'+combined[1]
+	if combined:
+		combHy = combined[0]+'-'+combined[1]
 	for event in scheduleInfo.events:
 		if combined:
 			if event[0] == combHy:
@@ -1289,16 +1415,20 @@ def competitorForOTS(personInfo,name,id,citizenship,gender,wcaid,events,age):
 
 
 def main():
+	from time import time
+	start = time()
 	# Download the file from here (Replace the comp id): https://www.worldcubeassociation.org/api/v0/competitions/VestkystCubing2021/wcif
 	# Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 	# Make a folder with the ones used in the file.
-	path = "../ringsted"
+	path = "../falster"
 	fil = open(f"{path}/wcif.json")
 
-	fixed = False # Bool 
-	stations = 16
+	fixed = False # Bool, fixed judges 
+	mixed = {'333':True,'pyram':True} # Event -> Bool. True meaning seated judges and runners
+	# mixed = {}
+	stations = 10
 	combined = None
-	combined = combineEvents('666','777')
+	# combined = combineEvents('666','777')
 
 	data = json.load(fil)
 	fil.close()
@@ -1318,39 +1448,42 @@ def main():
 	# competitorForOTS(people,details...)
 	
 	# schedule = scheduleBasicInfo(data,people,organizers,stations,{'333bf':3},combined)
-	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,{'333bf':2},combinedEvents=combined)
+	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,combinedEvents=combined)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,stations,combinedEvents=combined)
 	schedule, people = splitIntoGroups(schedule,people,fixed=fixed)
 
-	assignJudges(schedule,people,fixed)
+	assignJudges(schedule,people,fixed,mixed=mixed)
 	
 	sblacklist = open('sblacklist.txt').readlines()
 	set_sblacklist = set()
 	for i in sblacklist:
 		set_sblacklist.add(i.strip('\n'))
 
-	reassignJudges(schedule,people,set_sblacklist,fixed)
+	reassignJudges(schedule,people,set_sblacklist,fixed,mixed=mixed)
 
 	name = schedule.name
 	convertCSV(schedule,people,f'{target}/{name}Groups{filenameSave}.csv',combined=combined)
 	getStationNumbers(schedule,people,combined)
 	makePDFOverview(schedule,f'{target}/{name}Overview{filenameSave}.pdf')
 
-	compCards(schedule,people,f'{target}/{name}compCards{filenameSave}.pdf')
+	compCards(schedule,people,f'{target}/{name}compCards{filenameSave}.pdf',mixed=mixed)
 	getRegList(people,f'{target}/{name}CheckinList.pdf')
 	
 	CSVForScorecards(schedule,people,combined,f'{target}/{name}stationNumbers{filenameSave}.csv')
 	CSVForTimeLimits(schedule,people,combined,f'{target}/{name}timeLimits.csv')
 	# print('h')
+	stop = time()
+	# print(stop-start)
 	if not os.path.isdir("WCA_Scorecards"):
 		os.system('git clone https://github.com/Daniel-Anker-Hermansen/WCA_Scorecards.git')
 	os.chdir("WCA_Scorecards")
 
 	# get direct path from running 'whereis cargo'
-	os.system(f" /home/degdal/.cargo/bin/cargo run --release -- ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
+	# os.system(f" /home/degdal/.cargo/bin/cargo run --release -- --r1 ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
+	os.system(f"target/release/wca_scorecards --r1 ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
 	filenameToMove = "".join(schedule.longName.split(' '))
-	os.system(f'mv {filenameToMove}.pdf ../{target}/{filenameToMove}Scorecards.pdf')
+	os.system(f'mv {filenameToMove}_scorecards.pdf ../{target}/{filenameToMove}Scorecards.pdf')
 	# print(target)
 
 
