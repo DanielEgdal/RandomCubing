@@ -173,14 +173,14 @@ class Schedule():
 			else:
 				self.daySplit.append(i)
 
-	def eventTimeChecker(self, event1,event2):
-		if (event1[2] > event2[1] and event1[2] < event2[2]) or (event1[1] > event2[1] and event1[1] < event2[2]) or (event1[2] > event2[2] and event1[1] < event2[2]) or (event1[1] < event2[1] and event2[2] < event1[2]):
+	def eventTimeChecker(self, event1,event2): # There might be more erros with equal end times, just fixed the last one
+		if (event1[2] > event2[1] and event1[2] < event2[2]) or (event1[1] > event2[1] and event1[1] < event2[2]) or (event1[2] > event2[2] and event1[1] < event2[2]) or (event1[1] < event2[1] and event2[2] <= event1[2]):
 			return True
 		else:
 			return False
 	# if I weren't lazy this should be the same function
 	def groupTimeChecker(self, event1,event2): # Group1 and group2
-		if (event1[1] > event2[0] and event1[1] < event2[1]) or (event1[0] > event2[0] and event1[0] < event2[1]) or (event1[1] > event2[1] and event1[0] < event2[1]) or (event1[0] < event2[0] and event2[1] < event1[1]):
+		if (event1[1] > event2[0] and event1[1] < event2[1]) or (event1[0] > event2[0] and event1[0] < event2[1]) or (event1[1] > event2[1] and event1[0] < event2[1]) or (event1[0] < event2[0] and event2[1] <= event1[1]):
 			return True
 		else:
 			return False
@@ -548,13 +548,27 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 	It will print out if there were some mistake.
 	Failing to assign a person adds 100 to the fail score, a missing judge is 1.
 	"""
-	compByCount = [[] for _ in range(len(combination))]
 	all = []
+	oneGroup = []
+	combination2 = deepcopy(combination)
 	for event in combination:
-		for person in scheduleInfo.eventCompetitors[event]:
-			all.append(person)
+		if len(scheduleInfo.groups[event]) == 1:
+			oneGroup.append(event)
+		else:
+			for person in scheduleInfo.eventCompetitors[event]:
+				all.append(person)
+
+	if oneGroup:
+		for event in oneGroup:
+			combination2.remove(event)
+			for person in scheduleInfo.eventCompetitors[event]:
+				scheduleInfo.groups[event][1].append(person)
+				personInfo[person].groups[event] = 1
+
+	compByCount = [[] for _ in range(len(combination2))]
 	for person in collections.Counter(all):
 		compByCount[collections.Counter(all)[person]-1].append(person)
+
 
 	bsh2 = deepcopy(scheduleInfo)
 	bpes2 = deepcopy(personInfo)
@@ -562,9 +576,10 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 	few_mis = 0
 	few_comp = 0
 	final_failed_people = []
-	for ii in range(100): #100 simulations
-		random.shuffle(combination)
+	for ii in range(1000): #100 simulations
 		if few_fails > 0:
+			random.shuffle(combination2)
+			# print(combination2)
 			sh2 = deepcopy(scheduleInfo)
 			pes2 = deepcopy(personInfo)
 			for val in compByCount:
@@ -576,7 +591,7 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 			while j >= 0:
 				p2 = deepcopy(compByCount[j])
 				while p2:
-					for event in combination:
+					for event in combination2:
 						assigned = False
 						if p2[0] in sh2.eventCompetitors[event]:
 							groups = sh2.groups[event]
@@ -589,7 +604,7 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 									if len(groups[idy+1]) < perGroup: # Making sure there is space in the group
 										checkLegal = True
 										for event2 in pes2[p2[0]].groups:
-											if event2 in combination:
+											if event2 in combination2:
 												if not sh2.groupTimeChecker(sh2.groupTimes[event][idy+1],sh2.groupTimes[event2][pes2[p2[0]].groups[event2]]):
 													pass # Check that they don't have an overlapping event
 												else:
@@ -638,9 +653,8 @@ def splitIntoGroups(scheduleInfo,personInfo,fixed=True):
 						for toAdd in scheduleInfo.overlappingEvents[event1]:
 							tempSet.add(toAdd)
 					combination = combination.union(tempSet)
-				combination = list(combination) # For the sake of simulations
-				scheduleInfo, personInfo = splitIntoOverlapGroups(scheduleInfo, personInfo, combination,fixed) # For some reason it does not update the variables
-				combination = set(combination)
+				combinationList = deepcopy(list(combination)) # For the sake of simulations. 
+				scheduleInfo, personInfo = splitIntoOverlapGroups(scheduleInfo, personInfo, combinationList,fixed) # For some reason it does not update the variables
 				already = already.union(combination) # Don't repeat the same combo of overlaps
 
 	return scheduleInfo, personInfo # For some reason it does not update the variables
@@ -769,6 +783,7 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True):
 						print(f"Not possible for {event} group {groupNum}. Got {len(scheduleInfo.groupJudges[event][groupNum])} of {needed}")
 
 def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Needs fixing. Assigns judge multiple times in same event
+	random.shuffle(combination)
 	if fixedSeating:
 		missing = 0
 		for event in combination:
@@ -1046,19 +1061,8 @@ def reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist = {None},fixed=
 				if event in scheduleInfo.groupJudges:
 					if len(scheduleInfo.groupJudges[event][group]) > 0: # If judges are assigned for the event
 						# Always at least one scrambler
-						passed = False
-						for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
-							if personInfo[potScram].age > 14 and potScram not in blacklist: # Arguably can be set lower/higher for min
-								passed = True
-								break
-						if not passed:
-							potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
-						# print('orignal',potScram,event,group)
-						scheduleInfo.groupJudges[event][group].remove(potScram)
-						scheduleInfo.groupScramblers[event][group].append(potScram)
-						for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
-							if assignment == group:
-								personInfo[potScram].assignments[event][idx] = f';S{group}'
+						if len(scheduleInfo.groupScramblers[event][group]) <= len(scheduleInfo.groupRunners[event][group]):
+							reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist,fixed)
 						
 						# Just scramblers, continue until you have enough
 						am_scramblers = 2 # Manual amount of scramblers...
@@ -1070,21 +1074,7 @@ def reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist = {None},fixed=
 							am_scramblers = 2
 						while am_scramblers> len(scheduleInfo.groupScramblers[event][group]):
 							# scrmbler stuff
-							passed = False
-							for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
-								if personInfo[potScram].age > 10 and potScram not in blacklist: # Arguably can be set lower/higher for min
-									passed = True
-									break
-							if not passed:
-								print('somehow',event,group)
-								print(event,group,scheduleInfo.groupJudges[event][group][0])
-								potScram = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
-							# print('a',potScram,event,group)
-							scheduleInfo.groupJudges[event][group].remove(potScram)
-							scheduleInfo.groupScramblers[event][group].append(potScram)
-							for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
-								if assignment == group:
-									personInfo[potScram].assignments[event][idx] = f';S{group}'
+							reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist,fixed)
 
 def convertCSV(scheduleInfo,personInfo,outfile,combined=None):
 	"""
@@ -1521,7 +1511,7 @@ def main():
 
 	# competitorForOTS(people,details...)
 	
-	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':3,'sq1':3,'333':3},combinedEvents=combined)
+	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':4,'sq1':4,'333':3},combinedEvents=combined)
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
@@ -1557,7 +1547,6 @@ def main():
 	os.system(f"target/release/wca_scorecards --r1 ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
 	filenameToMove = "".join(schedule.longName.split(' '))
 	os.system(f'mv {filenameToMove}_scorecards.pdf ../{target}/{filenameToMove}Scorecards.pdf')
-	print(schedule.groupJudges['333mbf2'])
 
 
 main()
