@@ -573,20 +573,22 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 	bsh2 = deepcopy(scheduleInfo)
 	bpes2 = deepcopy(personInfo)
 	few_fails = 200000 # Default
+	few_extras = 0
 	few_mis = 0
 	few_comp = 0
 	final_failed_people = []
-	for ii in range(1000): #100 simulations
-		if few_fails > 0:
+	for ii in range(500): #500 simulations
+		if few_fails > 1:
 			random.shuffle(combination2)
 			# print(combination2)
 			sh2 = deepcopy(scheduleInfo)
 			pes2 = deepcopy(personInfo)
 			for val in compByCount:
 				random.shuffle(val)
-			random.shuffle(compByCount)
+			# random.shuffle(compByCount)
 			j = len(compByCount) -1
 			fails = 0
+			extras = 0
 			failed_people = []
 			while j >= 0:
 				p2 = deepcopy(compByCount[j])
@@ -601,10 +603,12 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 							random.shuffle(groupNumList)
 							for idy in groupNumList:
 								if not assigned:
-									if len(groups[idy+1]) < perGroup: # Making sure there is space in the group
+									if len(groups[idy+1]) < perGroup+5: # Making sure there is space in the group
 										checkLegal = True
 										for event2 in pes2[p2[0]].groups:
-											if event2 in combination2:
+											if event2 in combination:
+												# if event in ('skewb','444') and event2 in ('skewb','444'):
+												# 	print(event,event2,idy+1,pes2[p2[0]].groups[event2],sh2.groupTimeChecker(sh2.groupTimes[event][idy+1],sh2.groupTimes[event2][pes2[p2[0]].groups[event2]]))
 												if not sh2.groupTimeChecker(sh2.groupTimes[event][idy+1],sh2.groupTimes[event2][pes2[p2[0]].groups[event2]]):
 													pass # Check that they don't have an overlapping event
 												else:
@@ -613,16 +617,19 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 											sh2.groups[event][idy+1].append(p2[0])
 											pes2[p2[0]].groups[event] = idy+1
 											assigned = True
+											if len(groups[idy+1]) > perGroup:
+												extras+=0.5
 							if not assigned:
 								fails +=1
 								failed_people.append((p2[0],event))
 					p2 = p2[1:]
 				j -=1
 			missing = judgePQOverlap(combination,sh2,pes2,fixed) # Perform assignment of staff
-			score = fails*100 + missing
+			score = (fails*100) + missing +(extras*0.75)
 			if score < few_fails: # If there is fewer missing staff
 				few_fails = score
 				few_comp = fails
+				few_extras = extras
 				few_mis = missing
 				bsh2 = deepcopy(sh2)
 				bpes2 = deepcopy(pes2)
@@ -632,7 +639,7 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 	personInfo = deepcopy(bpes2)
 
 	if few_fails > 0:
-		print(f"{combination}: Totally missing {few_comp} competitors, and {few_mis} assignments. {final_failed_people}")
+		print(f"{combination}: Totally missing {few_comp} competitors, and {few_mis} assignments. Some extra people ({few_extras*2}). {final_failed_people}")
 	else:
 		print(f'sucess in overlapping events ({combination})')
 	return scheduleInfo,personInfo # For some reason it does not update the variables
@@ -1404,6 +1411,7 @@ def getStationNumbers(scheduleInfo,personInfo,combined):
 
 def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
 	header = 'Name,Id'
+	mbldDone = False
 	if combined:
 		combHy = combined[0]+'-'+combined[1]
 	for event in scheduleInfo.events:
@@ -1411,10 +1419,20 @@ def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
 			if event[0] == combHy:
 				for event in event[0].split('-'):
 					header+=f',{event}'
-			else:
+			elif scheduleInfo.mbldCounter and not mbldDone:
+				if event[0][:-1] == '333mbf':
+					mbldDone = True
+					header+=',333mbf'
+			elif event[0][:-1] != '333mbf':
 				header+=f',{event[0]}'
 		else:
-			header+=f',{event[0]}'
+			if scheduleInfo.mbldCounter and not mbldDone:
+				if event[0][:-1] == '333mbf':
+					mbldDone = True
+					header+=',333mbf'
+			elif event[0][:-1] != '333mbf':
+				header+=f',{event[0]}'
+
 	hCSV = header.split(',')
 	header+='\n'
 	# personlist = [val[0] for val in sorted(personInfo.items(),key= lambda x:x[1].id)] # should not be needed, as it should be sorted already
@@ -1423,6 +1441,8 @@ def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
 		for event in hCSV[1:]:
 			if event in personInfo[person].groups:
 				pString+=f"{personInfo[person].groups[event]};{personInfo[person].stationNumbers[event]}"
+			elif mbldDone and event =='333mbf' and '333mbf1' in personInfo[person].groups:
+				pString+=f"{personInfo[person].groups['333mbf1']};{personInfo[person].stationNumbers['333mbf1']}"
 			pString+=','
 		pString = pString[:-1]
 		header+=pString+'\n'
@@ -1432,6 +1452,7 @@ def CSVForScorecards(scheduleInfo,personInfo,combined,outfile):
 
 def CSVForTimeLimits(scheduleInfo,personInfo,combined,outfile):
 	header = ''
+	mbldDone = False
 	if combined:
 		combHy = combined[0]+'-'+combined[1]
 	for event in scheduleInfo.events:
@@ -1439,10 +1460,19 @@ def CSVForTimeLimits(scheduleInfo,personInfo,combined,outfile):
 			if event[0] == combHy:
 				for event in event[0].split('-'):
 					header+=f',{event}'
-			else:
+			elif scheduleInfo.mbldCounter and not mbldDone:
+				if event[0][:-1] == '333mbf':
+					mbldDone = True
+					header+=',333mbf'
+			elif event[0][:-1] != '333mbf':
 				header+=f',{event[0]}'
 		else:
-			header+=f',{event[0]}'
+			if scheduleInfo.mbldCounter and not mbldDone:
+				if event[0][:-1] == '333mbf':
+					mbldDone = True
+					header+=',333mbf'
+			elif event[0][:-1] != '333mbf':
+				header+=f',{event[0]}'
 	header = header[1:]
 	hCSV = header.split(',')
 
