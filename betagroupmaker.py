@@ -287,10 +287,11 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 						tempCombined = val['activityCode'][:-3]
 						roundnum = val['activityCode'][-1]
 						schedule.entire.append([tempCombined+roundnum,starttime,endtime])
+					# print(schedule.events[-1])
 				else:
 					# if val['activityCode'][:4] == '333f' and val['activityCode'][-1] not in ['3','2','4']:
 					if val['activityCode'][:4] == '333f':
-						tempFm.append([val['activityCode'][:-6],starttime,endtime])
+						tempFm.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
 						schedule.events.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
 						schedule.eventWOTimes.append(val['activityCode'][:-6]+val['activityCode'][-1])
 						schedule.eventTimes[val['activityCode'][:-6]+val['activityCode'][-1]] = (starttime,endtime)
@@ -298,7 +299,7 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 						# schedule.eventTimes[val['activityCode'][:-6]] = (starttime,endtime)
 					# elif val['activityCode'][:4] == '333m' and val['activityCode'][-1] not in ['3','2','4']:
 					elif val['activityCode'][:4] == '333m':
-						tempMb.append([val['activityCode'][:-6],starttime,endtime])
+						tempMb.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
 						# print(val['activityCode'])
 						schedule.mbldCounter += 1
 						schedule.events.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
@@ -308,18 +309,19 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 						# schedule.eventTimes[f"333mbf"] = (starttime,endtime)
 						# print([val['activityCode'][-4:-3]])
 					schedule.entire.append([val['activityCode'][:-6]+val['activityCode'][-1]+val['activityCode'][-4:-3],starttime,endtime])
+					# print(schedule.events[-1])
 			else:
 				fs = f"{val['activityCode']}0"
 				schedule.entire.append([fs,starttime,endtime])
 	# print(schedule.entire)
-	if len(tempMb) <2: # not used for its purpose in the end
-		schedule.events += tempMb 
-	else:
-		schedule.unpred.add("333mbf")
-	if len(tempFm) <2: # not used for its purpose in the end
-		schedule.events += tempFm
-	else:
-		schedule.unpred.add("333fm")
+	# if len(tempMb) <2: # not used for its purpose in the end
+	# 	schedule.events += tempMb 
+	# else:
+	# 	schedule.unpred.add("333mbf")
+	# if len(tempFm) <2: # not used for its purpose in the end
+	# 	schedule.events += tempFm
+	# else:
+	# 	schedule.unpred.add("333fm")
 	schedule.order() # Order the events by time in schedule
 	schedule.getDaySplit() # See which events are each day
 	schedule.organizers = organizers # Storing list of organizers and delegates
@@ -327,7 +329,6 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 	schedule.timezone = timezone
 	schedule.order_entire()
 	# print(schedule.entire)
-	schedule.orderCompetitors(personInfo,combinedEvents[0]+'-'+combinedEvents[1]) # Ordering competitors by rank (used in group making and getting scramblers)
 	schedule.identifyOverlap() # See which events overlap. Doesn't account full overlaps, i.e. for events with same start/ending time
 	# just1List = ['333fm','444bf','555bf','333mbf']
 	just1List = ['333fm','444bf','555bf']
@@ -341,6 +342,7 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 					personInfo[person].prs[f"333mbf{i}"] = personInfo[person].prs[f"333mbf"]
 		for i in range(1,schedule.mbldCounter+1):
 			just1List.append(f"333mbf{i}")
+	# print(schedule.events)
 	for person in personInfo: # Counting the combined events as one
 		already =False
 		for event in personInfo[person].events:
@@ -349,7 +351,9 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 				already =True
 			elif event not in [combinedEvents[0],combinedEvents[1]]: 
 				schedule.eventCompetitors[event].append(person)
-	getGroupCount(schedule,fixed,stations,customGroups,just1List) # Getting the amount of groups needed
+	schedule.orderCompetitors(personInfo,combinedEvents[0]+'-'+combinedEvents[1]) # Ordering competitors by rank (used in group making and getting scramblers)
+	# getGroupCount(schedule,fixed,stations,customGroups,just1List) # Getting the amount of groups needed
+	getGroupCount(schedule,fixed,stations,customGroups) # Getting the amount of groups needed
 	# for event in schedule.eventWOTimes:
 	# 	print(event,schedule.groups[event].keys())
 	schedule.getIndividualGroupTimes() # Seeing the start/end time of each group
@@ -425,7 +429,8 @@ def getGroupCount(scheduleInfo,fixedSeating,stationCount,custom=[False],just1=[F
 		for event in scheduleInfo.eventCompetitors:
 			if (event not in just1) and (event not in custom):
 				scheduleInfo.groups[event] = {}
-				for amount in range(1,math.ceil(len(scheduleInfo.eventCompetitors[event])/stationCount) +1):
+
+				for amount in range(1,np.max([math.ceil(len(scheduleInfo.eventCompetitors[event])/stationCount) +1,3])):
 					scheduleInfo.groups[event][amount] = []
 	else:
 		# stationCount *=1.15
@@ -603,7 +608,7 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 							random.shuffle(groupNumList)
 							for idy in groupNumList:
 								if not assigned:
-									if len(groups[idy+1]) < perGroup+5: # Making sure there is space in the group
+									if len(groups[idy+1]) < perGroup+np.min([int(perGroup*.2),4]): # Making sure there is space in the group
 										checkLegal = True
 										for event2 in pes2[p2[0]].groups:
 											if event2 in combination:
@@ -890,7 +895,16 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 										else:
 											checkLegal = False
 							if checkLegal:
-								pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
+								# print(event)
+								if len(event) > 4:
+									if event[3:6] == 'bf':
+										if personInfo[comp].wcaId:
+											# print(comp,personInfo[comp].wcaId)
+											pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
+									else:
+										pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
+								else:
+									pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
 					judge = pq.del_max()[0]
 					personInfo[judge].totalAssignments +=1
@@ -970,38 +984,53 @@ def reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist = {None},f
 	scrambler = ''
 	passed = False
 	justBroke = False
-	for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
-		justBroke = False
-		if personInfo[potScram].age > 12 and potScram not in blacklist: # Arguably can be set lower/higher for min
-			for idx,g in enumerate(personInfo[potScram].assignments[event]):
-				if type(g)==str:
-					gg = int(g[2:])
-				else:
-					gg =g
-				if gg < group:
-					if personInfo[potScram].assignments[event][idx] != f';S{group}':
-						justBroke = True
-						break
-			if not justBroke:
+	if fixed:
+		for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
+			justBroke = False
+			if personInfo[potScram].age > 12 and potScram not in blacklist: # Arguably can be set lower/higher for min
+				for idx,g in enumerate(personInfo[potScram].assignments[event]):
+					if type(g)==str:
+						gg = int(g[2:])
+					else:
+						gg =g
+					if gg < group:
+						if personInfo[potScram].assignments[event][idx] != f';S{group}':
+							justBroke = True
+							break
+				if not justBroke:
+					passed = True
+					scrambler = potScram
+					break
+			elif passed:
+				break
+	else: 
+		# print('here')
+		for potScram in scheduleInfo.groupJudges[event][group]: # Take fastest first
+			if personInfo[potScram].age > 12 and potScram not in blacklist: # Arguably can be set lower/higher for min
 				passed = True
 				scrambler = potScram
 				break
-		elif passed:
-			break
 	if not passed:
 		scrambler = scheduleInfo.groupJudges[event][group][0] # Take the fastest if no one is old enough
 		print('passing scram',group,event,scrambler)
-	for idx,g in enumerate(personInfo[scrambler].assignments[event]):
-		if type(g)==str:
-			gg = int(g[2:])
-		else:
-			gg =g
-		if gg >= group:
-			scheduleInfo.groupJudges[event][g].remove(scrambler)
-			scheduleInfo.groupScramblers[event][g].append(scrambler)
-			personInfo[scrambler].assignments[event][idx] = f';S{g}'
+	if fixed:
+		for idx,g in enumerate(personInfo[scrambler].assignments[event]):
+			if type(g)==str:
+				gg = int(g[2:])
+			else:
+				gg =g
+			if gg >= group:
+				scheduleInfo.groupJudges[event][g].remove(scrambler)
+				scheduleInfo.groupScramblers[event][g].append(scrambler)
+				personInfo[scrambler].assignments[event][idx] = f';S{g}'
+	else:
+		scheduleInfo.groupJudges[event][group].remove(scrambler)
+		scheduleInfo.groupScramblers[event][group].append(scrambler)
+		for idx,assignment in enumerate(personInfo[potScram].assignments[event]):
+			if assignment == group:
+				personInfo[scrambler].assignments[event][idx] = f';S{group}'
 
-def reassignToRunner(event,group,scheduleInfo,personInfo,blacklist = {None},fixed=True):
+def reassignToRunner(event,group,scheduleInfo,personInfo,blacklist = {None},fixed=True): # This needs to be fixed in the same way as above
 	# print('getting runner',event,group,len(scheduleInfo.groups[event][group]),len(scheduleInfo.groupJudges[event][group]),len(scheduleInfo.groupScramblers[event][group]),len(scheduleInfo.groupRunners[event][group]))
 	scheduleInfo.groupJudges[event][group].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
 	runner = ''
@@ -1044,7 +1073,7 @@ def reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist = {None},fixed=
 	for group in scheduleInfo.groups[event]:
 			scheduleInfo.groupScramblers[event][group] = []
 			scheduleInfo.groupRunners[event][group] = []
-	if event[:-1] != '333mbf':
+	if event[:-1] != '333mbf' and event not in ['444bf','555bf']:
 		if fixed:
 			for group in scheduleInfo.groups[event]:
 				if event in scheduleInfo.groupJudges:
@@ -1079,7 +1108,7 @@ def reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist = {None},fixed=
 							am_scramblers = 0
 						elif event=='444':
 							am_scramblers = 2
-						while am_scramblers> len(scheduleInfo.groupScramblers[event][group]):
+						while am_scramblers> len(scheduleInfo.groupScramblers[event][group]) and len(scheduleInfo.groupJudges[event][group]) > 1:
 							# scrmbler stuff
 							reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist,fixed)
 
@@ -1324,6 +1353,7 @@ def compCards(scheduleInfo,personInfo,outfile,mixed={}):
 	personlist.sort(key=lambda x:x.name)
 	progress = 0
 	event_list = []
+	# print(scheduleInfo.events)
 	for event in scheduleInfo.events:
 		sevent = event[0].split('-')
 		for event_ in sevent:
@@ -1514,13 +1544,14 @@ def main():
 	# Download the file from here (Replace the comp id): https://www.worldcubeassociation.org/api/v0/competitions/VestkystCubing2021/wcif
 	# Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 	# Make a folder with the ones used in the file.
-	path = "../dm"
+	path = "../vojens"
 	fil = open(f"{path}/wcif.json")
 
 	fixed = False # Bool, fixed judges 
+	# fixed = True
 	# mixed = {'333':True,'pyram':True} # Event -> Bool. True meaning seated judges and runners
 	mixed = {}
-	stations = 30
+	stations = 20
 	combined = None
 	combined = combineEvents('666','777')
 
@@ -1541,7 +1572,8 @@ def main():
 
 	# competitorForOTS(people,details...)
 	
-	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':4,'sq1':4,'333':3},combinedEvents=combined)
+	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':4,'sq1':4,'333':3},combinedEvents=combined)
+	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333':3,'pyram':3,'333oh':3},combinedEvents=combined)
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
