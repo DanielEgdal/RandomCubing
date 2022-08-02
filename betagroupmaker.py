@@ -141,6 +141,7 @@ class Schedule():
 		self.delegates = None # List of delegates
 		self.entire = []
 		self.mbldCounter = 0
+		self.sideStageEvents = set()
 
 	def order(self): # ordering events in schedule
 		self.events.sort(key=lambda x:x[1]) 
@@ -200,7 +201,7 @@ def competitorBasicInfo(data):
 	comp_dict = {}
 	year = int(datetime.now().strftime("%Y"))
 	organizers = set()
-	delegates = set()
+	delegates = []
 	for person in data['persons']:
 		try:
 			if person['registration']['status'] == 'accepted':
@@ -213,7 +214,7 @@ def competitorBasicInfo(data):
 						debuff = 1
 					if val in ('delegate','trainee-delegate'):
 						competitor.orga = 1 # Setting this for sorting by speed
-						delegates.add(person['name'])
+						delegates.append(person['name'])
 						debuff = 1
 				competitor.age = year - int(person["birthdate"][:4]) #getAge
 				competitor.dob = person["birthdate"]
@@ -263,7 +264,7 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 	timezone = pytz.timezone(data["schedule"]["venues"][0]["timezone"])
 	tempFm = [] # not used for its purpose in the end
 	tempMb = [] # not used for its purpose in the end
-	for room in data["schedule"]["venues"][0]['rooms']:
+	for id_room, room in enumerate(data["schedule"]["venues"][0]['rooms']): # Assumes room one is the main stage
 		for val in room["activities"]:
 			starttime = pd.Timestamp(val['startTime'][:-1]).tz_localize(pytz.utc).tz_convert(timezone)
 			endtime = pd.Timestamp(val['endTime'][:-1]).tz_localize(pytz.utc).tz_convert(timezone)
@@ -283,6 +284,9 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 							already_there.add(val['activityCode'][:-3])
 							schedule.eventTimes[tempCombined] = (starttime,endtime)
 							schedule.entire.append([tempCombined+roundnum,starttime,endtime])
+
+							if id_room > 0:
+								schedule.sideStageEvents.add(tempCombined)
 					elif val['activityCode'][-1] in ['3','2','4']:
 						tempCombined = val['activityCode'][:-3]
 						roundnum = val['activityCode'][-1]
@@ -295,6 +299,8 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 						schedule.events.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
 						schedule.eventWOTimes.append(val['activityCode'][:-6]+val['activityCode'][-1])
 						schedule.eventTimes[val['activityCode'][:-6]+val['activityCode'][-1]] = (starttime,endtime)
+						if id_room > 0:
+							schedule.sideStageEvents.add(val['activityCode'][:-6]+val['activityCode'][-1])
 						# schedule.eventWOTimes.append(val['activityCode'][:-6])
 						# schedule.eventTimes[val['activityCode'][:-6]] = (starttime,endtime)
 					# elif val['activityCode'][:4] == '333m' and val['activityCode'][-1] not in ['3','2','4']:
@@ -305,6 +311,8 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 						schedule.events.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
 						schedule.eventWOTimes.append(f"333mbf{val['activityCode'][-1]}")
 						schedule.eventTimes[f"333mbf{val['activityCode'][-1]}"] = (starttime,endtime)
+						if id_room > 0:
+							schedule.sideStageEvents.add(val['activityCode'][:-6]+val['activityCode'][-1])
 						# schedule.eventWOTimes.append(f"333mbf")
 						# schedule.eventTimes[f"333mbf"] = (starttime,endtime)
 						# print([val['activityCode'][-4:-3]])
@@ -561,7 +569,8 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 			oneGroup.append(event)
 		else:
 			for person in scheduleInfo.eventCompetitors[event]:
-				all.append(person)
+				if person not in scheduleInfo.delegates[:2]:
+					all.append(person)
 
 	if oneGroup:
 		for event in oneGroup:
@@ -569,6 +578,40 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 			for person in scheduleInfo.eventCompetitors[event]:
 				scheduleInfo.groups[event][1].append(person)
 				personInfo[person].groups[event] = 1
+	# very ugly way to do the side stage first
+	sideStageFirst = [] # Potentially use this for the other events too!
+	for event in combination2:
+		if event in scheduleInfo.sideStageEvents:
+			sideStageFirst.append(event)
+	for event in combination2:
+		if event not in scheduleInfo.sideStageEvents:
+			sideStageFirst.append(event)
+	
+	d1 = scheduleInfo.delegates[0] # assuming we have atleast two delegates
+	d2 = scheduleInfo.delegates[1] 
+	twoDelegates = [d1,d2]
+
+	for event in sideStageFirst:
+		groupNumList = [j for j in range(len(scheduleInfo.groups[event]))]
+		for idDelegate, delegate in enumerate(twoDelegates):
+			assigned = False
+			for idy in groupNumList:
+				if not assigned:
+					if (twoDelegates[(idDelegate+1)%2] not in scheduleInfo.groups[event][idy+1]):
+						checkLegal = True
+						for event2 in personInfo[delegate].groups:
+							if event2 in combination:
+								if (not scheduleInfo.groupTimeChecker(scheduleInfo.groupTimes[event][idy+1],scheduleInfo.groupTimes[event2][personInfo[delegate].groups[event2]])):
+									pass # Check that they don't have an overlapping event
+								else:
+									checkLegal = False
+						if checkLegal:
+							scheduleInfo.groups[event][idy+1].append(delegate)
+							personInfo[delegate].groups[event] = idy+1
+							assigned =True
+			if not assigned:
+				print('failed', delegate)
+
 
 	compByCount = [[] for _ in range(len(combination2))]
 	for person in collections.Counter(all):
@@ -1570,8 +1613,8 @@ def main():
 	
 	people,organizers,delegates = competitorBasicInfo(data)
 
-	# competitorForOTS(people,details...)
-	
+	competitorForOTS(people,details...)
+
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':4,'sq1':4,'333':3},combinedEvents=combined)
 	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333':3,'pyram':3,'333oh':3},combinedEvents=combined)
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
