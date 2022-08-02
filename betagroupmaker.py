@@ -579,7 +579,7 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 				scheduleInfo.groups[event][1].append(person)
 				personInfo[person].groups[event] = 1
 	# very ugly way to do the side stage first
-	sideStageFirst = [] # Potentially use this for the other events too!
+	sideStageFirst = []
 	for event in combination2:
 		if event in scheduleInfo.sideStageEvents:
 			sideStageFirst.append(event)
@@ -625,9 +625,9 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 	few_mis = 0
 	few_comp = 0
 	final_failed_people = []
-	for ii in range(500): #500 simulations
+	for ii in range(100): #500 simulations
 		if few_fails > 1:
-			random.shuffle(combination2)
+			# random.shuffle(combination2)
 			# print(combination2)
 			sh2 = deepcopy(scheduleInfo)
 			pes2 = deepcopy(personInfo)
@@ -641,7 +641,7 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 			while j >= 0:
 				p2 = deepcopy(compByCount[j])
 				while p2:
-					for event in combination2:
+					for event in sideStageFirst:
 						assigned = False
 						if p2[0] in sh2.eventCompetitors[event]:
 							groups = sh2.groups[event]
