@@ -122,6 +122,7 @@ class Schedule():
 		self.name = ''
 		self.longName= ''
 		self.timezone = ''
+		self.amountStations = 0
 		self.events = [] # list of lists. Inner lists have three values: Event name, s time, and e time of r1.
 		self.eventWOTimes = []
 		self.timelimits = {}
@@ -129,7 +130,7 @@ class Schedule():
 		self.eventCompetitors = defaultdict(list)
 		self.daySplit = [0] # the index where a day changes. Len = days-1
 		self.groups = {} # event -> groupnum -> group
-		self.stations = {}
+		self.stationOveriew = {}
 		self.groupJudges = {} # event -> groupnum -> group. Made later
 		self.groupRunners = {} # Will be event -> groupnum -> group. Made later
 		self.groupScramblers = {} # Will be event -> groupnum -> group. Made later
@@ -258,6 +259,7 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 	if combinedEvents==None:
 		combinedEvents = ('k','k')
 	schedule = Schedule()
+	schedule.amountStations = stations
 	schedule.name = data['id']
 	schedule.longName = data['name']
 	already_there = set()
@@ -308,6 +310,9 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 						tempMb.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
 						# print(val['activityCode'])
 						schedule.mbldCounter += 1
+						if schedule.mbldCounter != int(val['activityCode'][-1]):
+							schedule.mbldCounter -= 1
+						# print(schedule.mbldCounter, val['activityCode'][-1])
 						schedule.events.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
 						schedule.eventWOTimes.append(f"333mbf{val['activityCode'][-1]}")
 						schedule.eventTimes[f"333mbf{val['activityCode'][-1]}"] = (starttime,endtime)
@@ -463,13 +468,9 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,fixed=True):
 	totalComp = scheduleInfo.eventCompetitors[event]
 	perGroup = len(totalComp)/len(groups)
 	if event == '444': # manual amount of scramblers...
-		scramblerCount = 6
+		scramblerCount = 4
 	else:
 		scramblerCount = 4
-	# if fixed:
-	# 	scramblerCount = round(2/7*perGroup)
-	# else:
-	# 	scramblerCount = round(2/7*perGroup)
 	p2 = deepcopy(totalComp)
 	# special stuff when there are multiple delegates
 	delegateCompetitors = [compDel for compDel in scheduleInfo.delegates if compDel in totalComp]
@@ -651,7 +652,7 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 							random.shuffle(groupNumList)
 							for idy in groupNumList:
 								if not assigned:
-									if len(groups[idy+1]) < perGroup+np.min([int(perGroup*.2),4]): # Making sure there is space in the group
+									if len(groups[idy+1]) < np.min([perGroup+np.min([int(perGroup*.2),4]),scheduleInfo.amountStations]): # Making sure there is space in the group
 										checkLegal = True
 										for event2 in pes2[p2[0]].groups:
 											if event2 in combination:
@@ -1144,13 +1145,13 @@ def reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist = {None},fixed=
 							reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist,fixed)
 						
 						# Just scramblers, continue until you have enough
-						am_scramblers = 2 # Manual amount of scramblers...
+						am_scramblers = 6 # Manual amount of scramblers...
 						if event == 'sq1':
 							am_scramblers = 2
 						elif event == '333bf':
-							am_scramblers = 0
-						elif event=='444':
-							am_scramblers = 2
+							am_scramblers = 1
+						# elif event=='444':
+						# 	am_scramblers = 2
 						while am_scramblers> len(scheduleInfo.groupScramblers[event][group]) and len(scheduleInfo.groupJudges[event][group]) > 1:
 							# scrmbler stuff
 							reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist,fixed)
@@ -1270,26 +1271,26 @@ def makePDFOverview(scheduleInfo,outfile):
 				while i < len(competitors) or i < len(judges): # Print everyone
 					pdf.set_font('DejaVu','',8)
 					if len(competitors) > i and len(judges) > i and len(scramblers) > i and len(runners) > i: # Enough for now
-						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}') # HHHHH
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stationOveriew[event][group][competitors[i]]}') # HHHHH
 						pdf.cell(45,9,f'{judges[i]}')
 						pdf.cell(45,9,f'{scramblers[i]}')
 						pdf.cell(45,9,f'{runners[i]}',ln=True)
 					elif len(judges) > i and len(scramblers) > i: # Enough judges and scramblers for now
-						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}')
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stationOveriew[event][group][competitors[i]]}')
 						pdf.cell(45,9,f'{judges[i]}')
 						pdf.cell(45,9,f'{scramblers[i]}',ln=True)
 					elif len(competitors) > i and len(judges) > i: # Enough judges and competitors for now
-						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}')
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stationOveriew[event][group][competitors[i]]}')
 						pdf.cell(45,9,f'{judges[i]}',ln=True)
 					elif len(competitors) > i and len(scramblers) > i: # If there are more scramblers than judges
-						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}')
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stationOveriew[event][group][competitors[i]]}')
 						pdf.cell(45,9)
 						pdf.cell(45,9,f'{scramblers[i]}',ln=True)
 					elif len(judges) > i: # only used in case there is 'bonus judge'
 						pdf.cell(45,9,f'-')
 						pdf.cell(45,9,f'{judges[i]}',ln=True)
 					else: # Only competitors left
-						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stations[event][group][competitors[i]]}',ln=True)
+						pdf.cell(45,9,f'{competitors[i]}, {scheduleInfo.stationOveriew[event][group][competitors[i]]}',ln=True)
 					i+=1
 		else:
 			pdf.set_font('DejaVub','',20)
@@ -1464,15 +1465,34 @@ def getRegList(personInfo,outfile):
 		pdf.ln(line_height)
 	pdf.output(outfile)
 
-def getStationNumbers(scheduleInfo,personInfo,combined):
-	for event in scheduleInfo.eventWOTimes:
-		scheduleInfo.stations[event] = {}
-		for groupNum in scheduleInfo.groups[event]:
-			scheduleInfo.stations[event][groupNum] = {}
-			for idx,person in enumerate(scheduleInfo.groups[event][groupNum]):
-				personInfo[person].stationNumbers[event] = idx+1
-				scheduleInfo.stations[event][groupNum][person] = idx+1
-
+def getStationNumbers(scheduleInfo,personInfo,combined,stages):
+	if not stages:
+		for event in scheduleInfo.eventWOTimes:
+			scheduleInfo.stationOveriew[event] = {}
+			for groupNum in scheduleInfo.groups[event]:
+				scheduleInfo.stationOveriew[event][groupNum] = {}
+				for idx,person in enumerate(scheduleInfo.groups[event][groupNum]):
+					personInfo[person].stationNumbers[event] = idx+1
+					scheduleInfo.stationOveriew[event][groupNum][person] = idx+1
+	else:
+		for event in scheduleInfo.eventWOTimes:
+			scheduleInfo.stationOveriew[event] = {}
+			for groupNum in scheduleInfo.groups[event]:
+				scheduleInfo.stationOveriew[event][groupNum] = {}
+				counter = 0
+				realCounter = 0
+				while realCounter < len(scheduleInfo.groups[event][groupNum]):
+					for stage in range(stages):
+						if stage == 0:
+							counter +=1
+						# print(int(stage*(scheduleInfo.amountStations/stages) + counter))
+						if realCounter < len(scheduleInfo.groups[event][groupNum]):
+							person = scheduleInfo.groups[event][groupNum][realCounter]
+							personInfo[person].stationNumbers[event] = int(stage*(scheduleInfo.amountStations/stages) + (counter))
+							scheduleInfo.stationOveriew[event][groupNum][person] = int(stage*(scheduleInfo.amountStations/stages) + (counter))
+							realCounter += 1
+							# print(event,groupNum,person,int(stage*(scheduleInfo.amountStations/stages) + (counter)),realCounter)
+					
 	if combined: # Fix the assignment back to regular events
 		combHy = combined[0]+'-'+combined[1]
 		for person in personInfo:
@@ -1591,14 +1611,16 @@ def main():
 	# Download the file from here (Replace the comp id): https://www.worldcubeassociation.org/api/v0/competitions/VestkystCubing2021/wcif
 	# Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 	# Make a folder with the ones used in the file.
-	path = "../vojens"
+	path = "../dm"
 	fil = open(f"{path}/wcif.json")
 
 	fixed = False # Bool, fixed judges 
 	# fixed = True
 	# mixed = {'333':True,'pyram':True} # Event -> Bool. True meaning seated judges and runners
 	mixed = {}
-	stations = 20
+	stations = 30
+	stages = None
+	stages = 3 # Equally sized
 	combined = None
 	combined = combineEvents('666','777')
 
@@ -1607,7 +1629,6 @@ def main():
 	target = path+'/outfiles'
 	if not os.path.isdir(target):
 		os.mkdir(target)
-	# fil = open("../dåstrup/wcif.json")
 
 	# if we want a unique name
 	filenameSave = ''
@@ -1617,10 +1638,8 @@ def main():
 	
 	people,organizers,delegates = competitorBasicInfo(data)
 
-	competitorForOTS(people,details...)
-
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':4,'sq1':4,'333':3},combinedEvents=combined)
-	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333':3,'pyram':3,'333oh':3},combinedEvents=combined)
+	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined,customGroups={'333bf':3,'sq1':4})
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
@@ -1637,7 +1656,7 @@ def main():
 
 	name = schedule.name
 	convertCSV(schedule,people,f'{target}/{name}Groups{filenameSave}.csv',combined=combined)
-	getStationNumbers(schedule,people,combined)
+	getStationNumbers(schedule,people,combined,stages)
 	makePDFOverview(schedule,f'{target}/{name}Overview{filenameSave}.pdf')
 
 	compCards(schedule,people,f'{target}/{name}compCards{filenameSave}.pdf',mixed=mixed)
@@ -1653,9 +1672,17 @@ def main():
 
 	# get direct path from running 'whereis cargo'
 	# os.system(f" /home/degdal/.cargo/bin/cargo run --release -- --r1 ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
-	os.system(f"target/release/wca_scorecards --r1 ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
+	if stages:
+		os.system(f"target/release/wca_scorecards --r1 ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}' --stages R-10 G-10 B-10")
+	else:
+		os.system(f"target/release/wca_scorecards --r1 ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
+	
 	filenameToMove = "".join(schedule.longName.split(' '))
-	os.system(f'mv {filenameToMove}_scorecards.pdf ../{target}/{filenameToMove}Scorecards.pdf')
+	if stages:
+		os.system(f'mv {filenameToMove}_scorecards.zip ../{target}/{filenameToMove}Scorecards.zip')
+	else:
+		os.system(f'mv {filenameToMove}_scorecards.pdf ../{target}/{filenameToMove}Scorecards.pdf')
+	
 
 
 main()
