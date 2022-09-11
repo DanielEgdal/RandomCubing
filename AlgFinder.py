@@ -1,5 +1,6 @@
 from collections import deque
 from copy import copy
+import os
 
 solved = {189889725001869015647844142637570925,376852987872208983050224706027707245,563816250742546293545156266973125485,750779469037373440117088264631278445}
 
@@ -12,36 +13,66 @@ def swap3(k, pos1, pos2):
 	xor = (xor << pos1) | (xor << pos2)
 	return k ^ xor
 
-triggers = {"R U R'":["R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R' U' R'","R' U R'","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R U2 R'":["R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R' U' R'","R' U R'","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R U' R'":["R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R' U' R'","R' U R'","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R' U' R":["R U R'","R U2 R'","R U' R'","R' F R","R' F' R","R D R'","R D' R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R' U R":["R U R'","R U2 R'","R U' R'","R' F R","R' F' R","R D R'","R D' R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R' U2 R":["R U R'","R U2 R'","R U' R'","R' F R","R' F' R","R D R'","R D' R'","R U' R","R U R","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R' D R":["R U R'","R U2 R'","R U' R'","R' F R","R' F' R","R D R'","R D' R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R' D' R":["R U R'","R U2 R'","R U' R'","R' F R","R' F' R","R D R'","R D' R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R D R'":["R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R' U' R'","R' U R'","R2 D' R2","R2 D R2","F","F'","R'","U","U'","U2","D","D'","r","r'"],
-"R D' R'":["R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R' U' R'","R' U R'","R2 D' R2","R2 D R2","F","F'","R'","U","U'","U2","D","D'","r","r'"],
-"R' U' R'":["R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R' U' R'","R' U R'","R2 D' R2","R2 D R2","F","F'","R'","U","U'","U2","D","D'","r","r'"],
-"R' U R'":["R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R' U' R'","R' U R'","R2 D' R2","R2 D R2","F","F'","R'","U","U'","U2","D","D'","r","r'"],
-"R U' R":["R U R'","R U2 R'","R U' R'","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R U R":["R U R'","R U2 R'","R U' R'","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R2 D' R2":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","U","U'","U2","D","D'","r","r'"],
-"R2 D R2":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","U","U'","U2","D","D'","r","r'"],
-"R' F R":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","U","U'","U2","D","D'","r","r'"],
-"R' F' R":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","U","U'","U2","D","D'","r","r'"],
-"F":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","R","R'","U","U'","U2","D","D'","r","r'"],
-"F'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","R","R'","U","U'","U2","D","D'","r","r'"],
-"R":["R U R'","R U2 R'","R U' R'","R D R'","R D' R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","U","U'","U2","D","D'","r","r'"],
-"R'":["R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R' U' R'","R' U R'","R2 D' R2","R2 D R2","F","F'","R'","U","U'","U2","D","D'","r","r'"],
-"U":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","D","D'","r","r'"],
-"U'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","D","D'","r","r'"],
-"U2":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","D","D'","r","r'"],
-"D":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","U","U'","U2","r","r'"],
-"D'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","U","U'","U2","r","r'"],
-"r":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","U","U'","U2","D","D'","r"],
-"r'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","U","U'","U2","D","D'"],
-"k":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' F R","R' F' R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R2 D' R2","R2 D R2","F","F'","R","R'","U","U'","U2","D","D'","r","r'"]}
+# triggers = {"R U R'":["R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R' U' R'","R' U R'","F","F'","R","U","U'","U2","D","D'"],
+# "R U2 R'":["R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R' U' R'","R' U R'","F","F'","R","U","U'","U2","D","D'"],
+# "R U' R'":["R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R' U' R'","R' U R'","F","F'","R","U","U'","U2","D","D'"],
+# "R' U' R":["R U R'","R U2 R'","R U' R'","f","f'","S","S'","r","r'","R D R'","R D' R'","R U' R","R U R","F","F'","R","U","U'","U2","D","D'"],
+# "R' U R":["R U R'","R U2 R'","R U' R'","f","f'","S","S'","r","r'","R D R'","R D' R'","R U' R","R U R","F","F'","R","U","U'","U2","D","D'"],
+# "R' U2 R":["R U R'","R U2 R'","R U' R'","f","f'","S","S'","r","r'","R D R'","R D' R'","R U' R","R U R","F","F'","R","U","U'","U2","D","D'"],
+# "R' D R":["R U R'","R U2 R'","R U' R'","f","f'","S","S'","r","r'","R D R'","R D' R'","R U' R","R U R","F","F'","R","U","U'","U2","D","D'"],
+# "R' D' R":["R U R'","R U2 R'","R U' R'","f","f'","S","S'","r","r'","R D R'","R D' R'","R U' R","R U R","F","F'","R","U","U'","U2","D","D'"],
+# "R D R'":["R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R' U' R'","R' U R'","F","F'","R'","U","U'","U2","D","D'"],
+# "R D' R'":["R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R' U' R'","R' U R'","F","F'","R'","U","U'","U2","D","D'"],
+# "R' U' R'":["R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R' U' R'","R' U R'","F","F'","R'","U","U'","U2","D","D'"],
+# "R' U R'":["R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R' U' R'","R' U R'","F","F'","R'","U","U'","U2","D","D'"],
+# "R U' R":["R U R'","R U2 R'","R U' R'","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R U' R","R U R","F","F'","R","U","U'","U2","D","D'"],
+# "R U R":["R U R'","R U2 R'","R U' R'","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R U' R","R U R","F","F'","R","U","U'","U2","D","D'"],
+# "F":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R","R'","U","U'","U2","D","D'"],
+# "F'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R","R'","U","U'","U2","D","D'"],
+# "R":["R U R'","R U2 R'","R U' R'","R D R'","R D' R'","R U' R","R U R","f","f'","S","S'","r","r'","F","F'","R","U","U'","U2","D","D'"],
+# "R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","f","f'","S","S'","r","r'","F","F'","U","U'","U2","D","D'"],
+# "U":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","D","D'"],
+# "U'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","D","D'"],
+# "U2":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","D","D'"],
+# "D":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'"],
+# "D'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'"],
+# "r":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","U","U'","U2","D","D'"],
+# "r'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","U","U'","U2","D","D'"],
+# "S": ["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","f","f'","S","r","r'","F'","R","R'","U","U'","U2","D","D'"],
+# "S'": ["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","f","f'","r","r'","F","R","R'","U","U'","U2","D","D'"],
+# "f": ["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","S","r","r'","F","F'","R","R'","U","U'","U2","D","D'"],
+# "f'": ["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","S'","r","r'","F","F'","R","R'","U","U'","U2","D","D'"],
+# "k":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","f","f'","S","S'","r","r'","F","F'","R","R'","U","U'","U2","D","D'"]}
+
+#only rud
+triggers = {"R U R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","R","U","U'","U2","D","D'"],
+"R U2 R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","R","U","U'","U2","D","D'"],
+"R U' R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","R","U","U'","U2","D","D'"],
+"R' U' R":["R U R'","R U2 R'","R U' R'","R D R'","R D' R'","R U' R","R U R","R","U","U'","U2","D","D'"],
+"R' U R":["R U R'","R U2 R'","R U' R'","R D R'","R D' R'","R U' R","R U R","R","U","U'","U2","D","D'"],
+"R' U2 R":["R U R'","R U2 R'","R U' R'","R D R'","R D' R'","R U' R","R U R","R","U","U'","U2","D","D'"],
+"R' D R":["R U R'","R U2 R'","R U' R'","R D R'","R D' R'","R U' R","R U R","R","U","U'","U2","D","D'"],
+"R' D' R":["R U R'","R U2 R'","R U' R'","R D R'","R D' R'","R U' R","R U R","R","U","U'","U2","D","D'"],
+"R D R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","R'","U","U'","U2","D","D'"],
+"R D' R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","R'","U","U'","U2","D","D'"],
+"R' U' R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","R'","U","U'","U2","D","D'"],
+"R' U R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","R'","U","U'","U2","D","D'"],
+"R U' R":["R U R'","R U2 R'","R U' R'","R' D R","R' D' R","R D R'","R D' R'","R U' R","R U R","R","U","U'","U2","D","D'"],
+"R U R":["R U R'","R U2 R'","R U' R'","R' D R","R' D' R","R D R'","R D' R'","R U' R","R U R","R","U","U'","U2","D","D'"],
+"R":["R U R'","R U2 R'","R U' R'","R D R'","R D' R'","R U' R","R U R","R","U","U'","U2","D","D'"],
+"R'":["R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R' U' R'","R' U R'","U","U'","U2","D","D'"],
+"U":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R","R'","D","D'"],
+"U'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R","R'","D","D'"],
+"U2":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R","R'","D","D'"],
+"D":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R","R'"],
+"D'":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R","R'"],
+"k":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","R","R'","U","U'","U2","D","D'"]}
+
+# "R' F R":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","U","U'","U2","D","D'","r","r'"],
+# "R' F' R":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","U","U'","U2","D","D'","r","r'"],
+# "R2 D' R2":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","U","U'","U2","D","D'"],
+# "R2 D R2":["R U R'","R U2 R'","R U' R'","R' U' R","R' U R","R' U2 R","f","f'","S","S'","r","r'","R' D R","R' D' R","R D R'","R D' R'","R' U' R'","R' U R'","R U' R","R U R","F","F'","R","R'","U","U'","U2","D","D'"],
+
 
 def R(k):
 	# corners
@@ -171,6 +202,28 @@ def rp(k):
 	k = swap3(swap3(swap3(k,0,72),120,33),72,33)
 	return k
 
+def f(k):
+	k = F(k)
+	k = swap3(swap3(swap3(k,123,57),6,96),123,6)
+	k = swap3(swap3(swap3(k,3,48),126,105),105,48)
+	return k
+
+def fp(k):
+	k = Fp(k)
+	k = swap3(swap3(swap3(k,123,57),6,96),57,96)
+	k = swap3(swap3(swap3(k,3,48),126,105),126,3)
+	return k
+
+def S(k):
+	k = swap3(swap3(swap3(k,123,57),6,96),123,6)
+	k = swap3(swap3(swap3(k,3,48),126,105),105,48)
+	return k
+
+def Sp(k):
+	k = swap3(swap3(swap3(k,123,57),6,96),57,96)
+	k = swap3(swap3(swap3(k,3,48),126,105),126,3)
+	return k
+
 
 num_to_colour = {'000':'w','001':'o','010':'g','011':'r','100':'b','101':'y','110':'wwww'}
 # print(num_to_colour['000'])
@@ -229,79 +282,69 @@ def mk_inv(li):
 	return inverted
 
 def hit_dist(k,dist,dest):
-	dd = open(f"{dest}.txt",'a')
-	i=0
-	if k in dist:
-		return dist[k]
-	visited = set()
-	q = deque([(k, ['k'])])
-	while q:
-		s, path = q.popleft()
-		if s not in visited:
-			visited.add(s)
-			for trigger in triggers[path[-1]]:
-				npos = s
-				for move in trigger.split(' '):
-					npos = mdic[move](npos)
-				#print(self.pos)
-				newpath = copy(path)
-				newpath.append(trigger)
-				if npos in dist:
-					# print(" ".join(newpath))
-					# print(" ".join(dist[npos]))
-					# print('---')
-					print(" ".join(newpath[1:])," ".join(mk_inv(dist[npos])),file=dd)
-					print(i)
-					i+=1
-					# printbin(npos)
-					# return (" ".join(newpath)," ".join(dist[npos]))
-				else:
-					q.append((npos,newpath))
-					# i+=1
-					# if i%100000 == 0:
-					# 	print(i,len(newpath))
+	with open(f"{dest}.txt",'a') as dd:
+		i=0
+		if k in dist:
+			return dist[k]
+		visited = set()
+		q = deque([(k, ['k'])])
+		while q:
+			s, path = q.popleft()
+			if s not in visited:
+				visited.add(s)
+				for trigger in triggers[path[-1]]:
+					npos = s
+					for move in trigger.split(' '):
+						npos = mdic[move](npos)
+					#print(self.pos)
+					newpath = copy(path)
+					newpath.append(trigger)
+					if npos in dist:
+						# print(" ".join(newpath))
+						# print(" ".join(dist[npos]))
+						# print('---')
+						temp = " ".join(newpath[1:]) + ' ' + " ".join(mk_inv(dist[npos]))
+						print(temp)
+						# print(temp,file=dd)
+						dd.write(temp + os.linesep)
+						print(i)
+						i+=1
+						# printbin(npos)
+						# return (" ".join(newpath)," ".join(dist[npos]))
+					else:
+						q.append((npos,newpath))
+						# i+=1
+						# if i%100000 == 0:
+						# 	print(i,len(newpath))
 	
 # scramble = "R' U R U R' U' R' D' R U2 R' D R U R".split(' ')
 # scramble = "R' U R U' R' U R U R' U2 R U' R' U' R' D' R U' R' D R2".split(' ')
 # scramble = "R' U' R U' R' U R U' R' U2 R' D' R U2 R' D R U2 R".split(' ')
-scramble = "R F U' R2 U2 R U R' U R2 U F' R'".split(' ')
-mdic = {"R":R,"R'":Rp,"R2":R2,"U":U,"U'":Up,"U2":U2,"D":D,"D'":Dp,"F":F,"F'":Fp,"r":r,"r'":rp}
+scramble = "r U2 R' U' R U' r' U R U2 R' U2 R' F R F'".split(' ')
+mdic = {"R":R,"R'":Rp,"R2":R2,"U":U,"U'":Up,"U2":U2,"D":D,"D'":Dp,"F":F,"F'":Fp,"r":r,"r'":rp,"f":f,"f'":fp,'S':S,"S'":Sp}
 
 for move in scramble:
 	start = mdic[move](start)
 
 # printbin(rp(start))
 
-# print(solve(start))
-# printbin(start)
-import joblib
+import pickle
+import time
 # dist = get_dist_6()
-# joblib.dump(dist,"dist_6_try2.joblib")
-# print("dumping")
-# joblib.dump(dist,"dist_6_wider.joblib")
-dist = joblib.load("dist_6_wider.joblib")
-# dist = joblib.load("dist_6_try2.joblib")
+# print('dumping')
+# t0 = time.time()
+# Ff = open('dist_6RUD.pickle','wb')
+# pickle.dump(dist,Ff)
+# t1 = time.time()
+# print(t1-t0)
+
+t0 = time.time()
+# Ff = open('dist_6_s.pickle','rb')
+Ff = open('dist_6RUD.pickle','rb')
+dist = pickle.load(Ff)
+Ff.close()
+t1 = time.time()
 print('loaded')
-# print(len(dist))
-# printbin(Fp(start))
-print(hit_dist(start,dist,'p58'))
-# print(start)
-# for i in range(int(1e7)):
-# 	start = U(start)
-# print(start)
-# tet = ["R U R'",'F U2 F',"R F U2"]
-# print(mk_inv(tet))
 
-# print(mk_inv)
-# scramble = "R U R' U R U2 R'".split(' ')
+print(hit_dist(start,dist,'pi5'))
 
-
-
-# for trigger in ["R' U' R'", "R' U R", 'U', "R' U' R'", "D'", "R U2 R'", 'D']:
-# 	for move in trigger.split(' '): 
-# 		start = mdic[move](start)
-# 		print(move)
-# 		printbin(start)
-# printbin(start)
-
-    
