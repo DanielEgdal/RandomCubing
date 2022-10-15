@@ -803,59 +803,62 @@ def splitIntoGroups(scheduleInfo,personInfo,fixed=True):
 
 	return scheduleInfo, personInfo # For some reason it does not update the variables
 
+
+def getNoAssignmentInEvent(scheduleInfo,personInfo,event,groupNum,atleast1):
+	pq = MaxPQ()
+	for comp in scheduleInfo.eventCompetitors[event]: # First, get only the people who aren't staffing in any group
+		if comp not in scheduleInfo.delegates:
+			if comp not in scheduleInfo.groups[event][groupNum]:
+				if comp not in atleast1:
+					pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
+	return pq
+
+def getAssignmentAlreadyInEvent(scheduleInfo,personInfo,event,groupNum,pq,used):
+	for comp in scheduleInfo.eventCompetitors[event]:
+		if comp not in used and comp not in scheduleInfo.delegates:
+			if comp not in scheduleInfo.groups[event][groupNum]:
+				pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
+
+def placePeopleInVenueInPQ(scheduleInfo,personInfo,event,groupNum,pq,used):
+	for comp in scheduleInfo.inVenue[event]:
+		if comp not in used and not comp in scheduleInfo.groups[event][groupNum]:
+			if comp in scheduleInfo.delegates:
+				pq.insert([comp,0])
+			else:
+				pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
+
+def assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,atleast1,used):
+	while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
+		judge = pq.del_max()[0]
+		personInfo[judge].totalAssignments +=1
+		personInfo[judge].assignments[event].append(groupNum)
+		scheduleInfo.groupJudges[event][groupNum].append(judge)
+		atleast1.add(judge) 
+		used.add(judge)
+
 def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True):
 	if fixedSeating:
 		scheduleInfo.groupJudges[event] = {}
 		groups = scheduleInfo.groups[event]
-		competitors = scheduleInfo.eventCompetitors[event]
-		maybePeople = scheduleInfo.inVenue[event]
 		atleast1 = set() # Make sure everyone judges at least once before giving two assignments to other people
 		for groupNum in groups:
-			pq = MaxPQ()
 			scheduleInfo.groupJudges[event][groupNum] = []
 			if event!= '333bf':
 				needed = len(scheduleInfo.groups[event][groupNum]) + np.min([round(3/7*(len(scheduleInfo.groups[event][groupNum]))) +1,4])
 			else:
 				needed = len(scheduleInfo.groups[event][groupNum]) + np.min([round(3/7*(len(scheduleInfo.groups[event][groupNum]))) +1,4])
-			used = set() # those that were already tried
-			for comp in competitors: # First, get only the people who haven't judged in the event
-				if comp not in scheduleInfo.delegates:
-					if comp not in scheduleInfo.groups[event][groupNum]:
-						if comp not in atleast1:
-							pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-			while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
-					judge = pq.del_max()[0]
-					personInfo[judge].totalAssignments +=1
-					personInfo[judge].assignments[event].append(groupNum)
-					scheduleInfo.groupJudges[event][groupNum].append(judge)
-					atleast1.add(judge) 
-					used.add(judge)
+			pq = getNoAssignmentInEvent(scheduleInfo,personInfo,event,groupNum,atleast1)
+			used = set() # keep track of who already staff in the group
+			assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,atleast1)
 			
-			if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
-				for comp in competitors: # second try competitors in the event
-					if comp not in used and comp not in scheduleInfo.delegates:
-						if comp not in scheduleInfo.groups[event][groupNum]:
-							pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
-					judge = pq.del_max()[0]
-					personInfo[judge].totalAssignments +=1
-					personInfo[judge].assignments[event].append(groupNum)
-					scheduleInfo.groupJudges[event][groupNum].append(judge)
-					atleast1.add(judge) 
-					used.add(judge)
+			# If we need to assign some people more than once to get enough staff
+			if len(scheduleInfo.groupJudges[event][groupNum]) < needed: 
+				getAssignmentAlreadyInEvent(scheduleInfo,personInfo,event,groupNum,pq,used)
+				assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,atleast1,used)
 			
 			if len(scheduleInfo.groupJudges[event][groupNum]) < needed: # If more people are needed, try all in the venue
-				for comp in maybePeople:
-					if comp not in used and not comp in scheduleInfo.groups[event][groupNum]:
-						if comp in scheduleInfo.delegates:
-							pq.insert([comp,0])
-						else:
-							pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
-					judge = pq.del_max()[0]
-					personInfo[judge].totalAssignments +=1
-					personInfo[judge].assignments[event].append(groupNum)
-					scheduleInfo.groupJudges[event][groupNum].append(judge)
+				placePeopleInVenueInPQ(scheduleInfo,personInfo,event,groupNum,pq,used)
+				assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,atleast1,used)
 				if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 					print(f"Not possible for {event} group {groupNum}. Got {len(scheduleInfo.groupJudges[event][groupNum])} of {needed}")
 	else:
@@ -890,26 +893,15 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True):
 						if comp not in scheduleInfo.groups[event][groupNum]:
 							if comp not in atleast1:
 								pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
-						judge = pq.del_max()[0]
-						personInfo[judge].totalAssignments +=1
-						personInfo[judge].assignments[event].append(groupNum)
-						scheduleInfo.groupJudges[event][groupNum].append(judge)
-						atleast1.add(judge) 
-						used.add(judge)
+				
+				assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,atleast1,used)
 				
 				if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 					for comp in competitors: # second try competitors in the event
 						if comp not in used and comp not in scheduleInfo.delegates:
 							if comp not in scheduleInfo.groups[event][groupNum]:
 								pq.insert([comp,math.log((len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-					while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed:
-						judge = pq.del_max()[0]
-						personInfo[judge].totalAssignments +=1
-						personInfo[judge].assignments[event].append(groupNum)
-						scheduleInfo.groupJudges[event][groupNum].append(judge)
-						atleast1.add(judge) 
-						used.add(judge)
+					assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,atleast1,used)
 				
 				if len(scheduleInfo.groupJudges[event][groupNum]) < needed: # If more people are needed, try all in the venue
 					for comp in maybePeople:
@@ -918,11 +910,7 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True):
 								pq.insert([comp,0])
 							else:
 								pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-					while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
-						judge = pq.del_max()[0]
-						personInfo[judge].totalAssignments +=1
-						personInfo[judge].assignments[event].append(groupNum)
-						scheduleInfo.groupJudges[event][groupNum].append(judge)
+					assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,atleast1,used)
 					if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 						print(f"Not possible for {event} group {groupNum}. Got {len(scheduleInfo.groupJudges[event][groupNum])} of {needed}")
 
@@ -942,7 +930,6 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 				used = set() # those that were already tried
 				for comp in competitors:
 					if comp not in scheduleInfo.delegates:
-						used.add(comp)
 						if comp not in scheduleInfo.groups[event][groupNum]: # Check they aren't competing in overlapping group
 							checkLegal = True
 							for event2 in personInfo[comp].groups:
@@ -960,12 +947,8 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 											checkLegal = False
 							if checkLegal:
 								pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
-					judge = pq.del_max()[0]
-					personInfo[judge].totalAssignments +=1
-					personInfo[judge].assignments[event].append(groupNum)
-					scheduleInfo.groupJudges[event][groupNum].append(judge)
-				if len(scheduleInfo.groupJudges[event][groupNum]) < needed: # If we didn't get enough first time, check people in veneu
+				assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,set(),used)
+				if len(scheduleInfo.groupJudges[event][groupNum]) < needed: # If we didn't get enough first time, check people in venue
 					for comp in maybePeople:
 						if comp not in used and not comp in scheduleInfo.groups[event][groupNum]:
 							checkLegal = True
@@ -987,11 +970,7 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 									pq.insert([comp,0])
 								else:
 									pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-					while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
-						judge = pq.del_max()[0]
-						personInfo[judge].totalAssignments +=1
-						personInfo[judge].assignments[event].append(groupNum)
-						scheduleInfo.groupJudges[event][groupNum].append(judge)
+					assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,set(),used)
 					if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 						missing += needed-len(scheduleInfo.groupJudges[event][groupNum])
 						# print(f"Not possible for {event} group {groupNum}. Got {len(scheduleInfo.groupJudges[event][groupNum])} of {needed}")
@@ -1017,7 +996,6 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 				used = set() # those that were already tried
 				for comp in competitors:
 					if comp not in scheduleInfo.delegates:
-						used.add(comp)
 						if comp not in scheduleInfo.groups[event][groupNum]: # Check they aren't competing in overlapping group
 							checkLegal = True
 							for event2 in personInfo[comp].groups:
@@ -1044,11 +1022,7 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 										pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 								else:
 									pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-				while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
-					judge = pq.del_max()[0]
-					personInfo[judge].totalAssignments +=1
-					personInfo[judge].assignments[event].append(groupNum)
-					scheduleInfo.groupJudges[event][groupNum].append(judge)
+				assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,set(),used)
 				if len(scheduleInfo.groupJudges[event][groupNum]) < needed: # If we didn't get enough first time, check people in veneu
 					for comp in maybePeople:
 						if comp not in used and not comp in scheduleInfo.groups[event][groupNum]:
@@ -1074,18 +1048,17 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True): ## Ne
 										pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 								else:
 									pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
-					while not pq.is_empty() and len(scheduleInfo.groupJudges[event][groupNum]) < needed: # Refactor later for scramblers and judges
-						judge = pq.del_max()[0]
-						personInfo[judge].totalAssignments +=1
-						personInfo[judge].assignments[event].append(groupNum)
-						scheduleInfo.groupJudges[event][groupNum].append(judge)
+					assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,set(),used)
 					if len(scheduleInfo.groupJudges[event][groupNum]) < needed:
 						missing += needed-len(scheduleInfo.groupJudges[event][groupNum])
 						# print(f"Not possible for {event} group {groupNum}. Got {len(scheduleInfo.groupJudges[event][groupNum])} of {needed}")
 		return missing
 
-
 def assignJudges(scheduleInfo,personInfo,fixedSeating= True,dontAssign=True,mixed={}):
+	"""
+	Judge assignments for overlapping events is being called together with splitIntoOverapGroups, 
+	as I still need to do simulations to find the best combo for judges.
+	"""
 	if dontAssign: # Don't assign judges when there is only one group
 		for event in scheduleInfo.events:
 			if len(scheduleInfo.groups[event[0]]) > 1:
@@ -1709,18 +1682,18 @@ def main():
 	# Download the file from here (Replace the comp id): https://www.worldcubeassociation.org/api/v0/competitions/VestkystCubing2021/wcif
 	# Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 	# Make a folder with the ones used in the file.
-	path = "../hdc2"
+	path = "../dm"
 	fil = open(f"{path}/wcif.json")
 
 	fixed = False # Bool, fixed judges 
 	# fixed = True
 	# mixed = {'333':True,'pyram':True} # Event -> Bool. True meaning seated judges and runners
 	mixed = {}
-	stations = 10
+	stations = 30
 	stages = None
-	# stages = 3 # Equally sized
+	stages = 3 # Equally sized
 	combined = None
-	# combined = combineEvents('666','777')
+	combined = combineEvents('666','777')
 
 	data = json.load(fil)
 	fil.close()
@@ -1737,8 +1710,8 @@ def main():
 	people,organizers,delegates = competitorBasicInfo(data)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':4,'sq1':4,'333':3},combinedEvents=combined)
-	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined,customGroups={'333bf':3,'sq1':4,'333mbf1':1})
-	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
+	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined,customGroups={'333bf':3,'sq1':4,'333mbf1':1})
+	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
 	schedule, people = splitIntoGroups(schedule,people,fixed=fixed)
