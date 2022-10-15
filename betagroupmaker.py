@@ -8,6 +8,8 @@ import random
 import math
 import numpy as np
 import pandas as pd
+import webbrowser
+import requests
 from typing import Dict, Generic, Iterator, List, Optional, TypeVar # For the priority queue
 from fpdf import FPDF # For pdfs
 import pytz # for timezones
@@ -144,6 +146,7 @@ class Schedule():
 		self.mbldCounter = 0
 		self.sideStageEvents = set()
 		self.maxAmountGroups = 0
+		self.childActivityMapping = {}
 
 	def order(self): # ordering events in schedule
 		self.events.sort(key=lambda x:x[1]) 
@@ -251,7 +254,7 @@ def competitorBasicInfo(data):
 			pass
 	return comp_dict,organizers, delegates
 
-def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,customGroups=[False], combinedEvents=None): # Custom groups is a dict, combined evnets is touple
+def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,customGroups=[False], combinedEvents=None,just1GroupofBigBLD=True): # Custom groups is a dict, combined evnets is touple
 	"""
 	Get all the basic information for the schedule. 
 	Doesn't store which stage events appear on, but will look into if events overlap (but not fully)
@@ -366,8 +369,10 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 			elif event not in [combinedEvents[0],combinedEvents[1]]: 
 				schedule.eventCompetitors[event].append(person)
 	schedule.orderCompetitors(personInfo,combinedEvents[0]+'-'+combinedEvents[1]) # Ordering competitors by rank (used in group making and getting scramblers)
-	# getGroupCount(schedule,fixed,stations,customGroups,just1List) # Getting the amount of groups needed
-	getGroupCount(schedule,fixed,stations,customGroups) # Getting the amount of groups needed
+	if just1GroupofBigBLD:
+		getGroupCount(schedule,fixed,stations,customGroups,just1List) # Getting the amount of groups needed
+	else:
+		getGroupCount(schedule,fixed,stations,customGroups) # Getting the amount of groups needed
 	for event in schedule.groups:
 		if len(schedule.groups[event]) > schedule.maxAmountGroups:
 			schedule.maxAmountGroups = len(schedule.groups[event])
@@ -1640,6 +1645,102 @@ def competitorForOTS(personInfo,name,id,citizenship,gender,wcaid,events,age):
 	comp.age = age
 	personInfo[name] = comp
 
+def genToken():
+	# alternatively remove the .get part if the browser is causing you an issue, or just open the url yourself and save the code to a file
+	webbrowser.get("x-www-browser").open("https://www.worldcubeassociation.org/oauth/authorize?client_id=8xB-6U1fFcZ9PAy80pALi9E7nzfoF44W4cMPyIUXrgY&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=token&scope=manage_competitions+public",new=0)
+	token = input("A browser should open. Copy the token from the URL and paste it here")
+	return token
+
+def getWcif(id):
+	if not os.path.exists("authcode"):
+		token = genToken()
+		with open('authcode','w') as f:
+			print(token,file=f)
+	else:
+		with open('authcode','r') as f:
+			token = f.readline().strip('\n')
+	header = {'Authorization':f"Bearer {token}"}
+	
+	wcif = requests.get(f"https://www.worldcubeassociation.org/api/v0/competitions/{id}/wcif",headers=header)
+	assert wcif.status_code == 200
+	return wcif,header
+
+def postWcif(id,wcif,header):
+	r = requests.patch(f"https://www.worldcubeassociation.org/api/v0/competitions/{id}/wcif", json=wcif,headers=header)
+	print(r)
+
+def updateScrambleCount(data,scheduleInfo): # Just for R1 currently
+	for idx,event in enumerate(data['events']):
+		scrambleSetCount = len(scheduleInfo.groups[event['id']])
+		data['events'][idx]['rounds'][0]['scrambleSetCount'] = scrambleSetCount
+
+def createChildActivityWCIF(data,scheduleInfo):
+	childIdCounter= max([int(activity['id']) for vid, venue in enumerate(data['schedule']['venues'])
+		for rid,room in enumerate(venue['rooms'])
+			for aid,activity in enumerate(room['activities'])])+1
+	# extensionTemplate = {'id': 'DVE.GroupMaker', 
+	# 'specUrl': 'Daniel V. Egdal, probably look here https://github.com/DanielEgdal/RandomCubing', 
+	# 'data': {'capacity': 1, 'groups': 1, 'scramblers': 0, 'runners': 0, 'assignJudges': True}}
+	childTemplate = {'id': 0, 'name': 'Event Name, Round 0, Group 0', 
+	'activityCode': 'wcaeventid-r0-g0', 'startTime': 'yyyy-mm-ddThh:mm:ssZ', 'endTime': 'yyyy-mm-ddThh:mm:ssZ', 
+	'childActivities': [], 'extensions': []}
+	for vid, venue in enumerate(data['schedule']['venues']):
+		for rid,room in enumerate(venue['rooms']):
+			for aid,activity in enumerate(room['activities']):
+				eventSplit = activity['activityCode'].split('-')
+				if eventSplit[1][-1] == '1' and eventSplit[0] in scheduleInfo.groupTimes:
+					scheduleInfo.childActivityMapping[eventSplit[0]] = {}
+					for gid,groupNum in enumerate(scheduleInfo.groupTimes[eventSplit[0]]):
+						# print(aid)
+						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'].append(deepcopy(childTemplate))
+						# data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'].append(deepcopy(extensionTemplate))
+						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['id'] = childIdCounter
+						scheduleInfo.childActivityMapping[eventSplit[0]][groupNum] =childIdCounter
+						childIdCounter += 1
+						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['name'] = f"{data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['name']}, Round 1 Group {groupNum}"
+						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['activityCode'] = f"{data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['activityCode']}-g{groupNum}"
+						startTime = str(scheduleInfo.groupTimes[eventSplit[0]][groupNum][0].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
+						endTime = str(scheduleInfo.groupTimes[eventSplit[0]][groupNum][1].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
+						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['startTime'] = startTime
+						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['endTime'] = endTime
+				else:
+					pass
+					# print(activity)
+						# print(dir(scheduleInfo.groupTimes[eventSplit[0]][groupNum][0].tz_convert(pytz.utc)))
+	# print(data['schedule']['venues'][0]['rooms'][0]['activities'][5])
+
+def enterPersonActivitiesWCIF(data,personInfo,scheduleInfo):
+	assignmentTemplate = {"activityId":66,"stationNumber":None,"assignmentCode":"competitor"}
+	for pid,person in enumerate(data['persons']):
+		depth = 0
+		if type(person['registration']) == dict:
+			if person['registration']['status'] == 'accepted':
+				for event in personInfo[person['name']].groups:
+					data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
+					# print("competing",len(data['persons'][pid]['assignments']),depth)
+					data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][personInfo[person['name']].groups[event]]
+					data['persons'][pid]['assignments'][depth]['stationNumber'] = personInfo[person['name']].stationNumbers[event]
+					depth+=1
+
+				for event in personInfo[person['name']].assignments:
+					for assignment in personInfo[person['name']].assignments[event]:
+						data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
+						# print("staffing",len(data['persons'][pid]['assignments']),depth)
+						if type(assignment) == int:
+							data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][assignment]
+							data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-judge"
+						else:
+							assignment = assignment[1:]
+							if assignment[0] == 'S':
+								assignment = int(assignment[1:])
+								data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][assignment]
+								data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-scrambler"
+							else: # should be runner
+								assignment = int(assignment[1:])
+								data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][assignment]
+								data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-runner"
+						# scheduleInfo.childActivityMapping[personInfo[person['name']][event]]
+						depth+=1
 
 def main():
 	from time import time
@@ -1648,8 +1749,14 @@ def main():
 	# Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 	# Make a folder with the ones used in the file.
 	# Known bugs: If there is a sidestage and more than X Delegates, the Delegates are set to compete in the event despite not registering for it.
+	
 	path = "../roskildefa"
-	fil = open(f"{path}/wcif.json")
+
+	postToWCIF = True # Should be False when playing
+	# fil = open(f"{path}/wcif.json")
+	id = 'RoskildeforAlle2022'
+	response,header = getWcif(id)
+	data = json.loads(response.content)
 
 	fixed = False # Bool, fixed judges 
 	# fixed = True
@@ -1660,9 +1767,10 @@ def main():
 	# stages = 3 # Equally sized
 	combined = None
 	# combined = combineEvents('666','777')
+	just1GroupofBigBLD = True
 
-	data = json.load(fil)
-	fil.close()
+	# data = json.load(fil)
+	# fil.close()
 	target = path+'/outfiles'
 	if not os.path.isdir(target):
 		os.mkdir(target)
@@ -1677,7 +1785,7 @@ def main():
 
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':4,'sq1':4,'333':3},combinedEvents=combined)
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined,customGroups={'333bf':3,'sq1':4,'333mbf1':1})
-	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
+	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined,just1GroupofBigBLD=just1GroupofBigBLD)
 
 	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined)
 	schedule, people = splitIntoGroups(schedule,people,fixed=fixed)
@@ -1719,6 +1827,16 @@ def main():
 		os.system(f'mv {filenameToMove}_scorecards.zip ../{target}/{filenameToMove}Scorecards.zip')
 	else:
 		os.system(f'mv {filenameToMove}_scorecards.pdf ../{target}/{filenameToMove}Scorecards.pdf')
+
+	# createChildActivityWCIF(data,schedule)
+	# enterPersonActivitiesWCIF(data,people,schedule)
+	if postToWCIF:
+		confirm = input("Confirm you want to post with 1")
+		if confirm == '1':
+			updateScrambleCount(data,schedule)
+			createChildActivityWCIF(data,schedule)
+			enterPersonActivitiesWCIF(data,people,schedule)
+			postWcif(id,data,header)
 	
 
 
