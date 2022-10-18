@@ -1,6 +1,7 @@
 # Fonts needed because of utf-8. Document: https://pyfpdf.github.io/fpdf2/Unicode.html. Direct link: https://github.com/reingart/pyfpdf/releases/download/binary/fpdf_unicode_font_pack.zip
 # Make a folder with the ones used in the file.
 # Known bugs: If there is a sidestage and more than X Delegates, the Delegates are set to compete in the event despite not registering for it.
+# If there is more than 4 groups of a combined event, something weird might happen
 
 import collections
 import os
@@ -140,6 +141,7 @@ class Schedule():
 		self.subSeqAmountCompetitors = {} # event+roundnumber -> amount of competitors
 		self.subSeqGroupCount = {} # event+roundnumber -> number of groups
 		self.stationOveriew = {}
+		self.judgeStationOveriew = {}
 		self.groupJudges = {} # event -> groupnum -> group. Made later
 		self.groupRunners = {} # Will be event -> groupnum -> group. Made later
 		self.groupScramblers = {} # Will be event -> groupnum -> group. Made later
@@ -316,7 +318,6 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 						roundnum = val['activityCode'][-1]
 						schedule.eventTimes[tempCombined+val['activityCode'][-1]] = (starttime,endtime)
 						schedule.entire.append([tempCombined+roundnum,starttime,endtime])
-					# print(schedule.events[-1])
 				else:
 					# if val['activityCode'][:4] == '333f' and val['activityCode'][-1] not in ['3','2','4']:
 					if val['activityCode'][:4] == '333f':
@@ -331,11 +332,9 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 					# elif val['activityCode'][:4] == '333m' and val['activityCode'][-1] not in ['3','2','4']:
 					elif val['activityCode'][:4] == '333m':
 						tempMb.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
-						# print(val['activityCode'])
 						schedule.mbldCounter += 1
 						if schedule.mbldCounter != int(val['activityCode'][-1]):
 							schedule.mbldCounter -= 1
-						# print(schedule.mbldCounter, val['activityCode'][-1])
 						schedule.events.append([val['activityCode'][:-6]+val['activityCode'][-1],starttime,endtime])
 						schedule.eventWOTimes.append(f"333mbf{val['activityCode'][-1]}")
 						schedule.eventTimes[f"333mbf{val['activityCode'][-1]}"] = (starttime,endtime)
@@ -343,13 +342,10 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 							schedule.sideStageEvents.add(val['activityCode'][:-6]+val['activityCode'][-1])
 						# schedule.eventWOTimes.append(f"333mbf")
 						# schedule.eventTimes[f"333mbf"] = (starttime,endtime)
-						# print([val['activityCode'][-4:-3]])
 					schedule.entire.append([val['activityCode'][:-6]+val['activityCode'][-1]+val['activityCode'][-4:-3],starttime,endtime])
-					# print(schedule.events[-1])
 			else:
 				fs = f"{val['activityCode']}0"
 				schedule.entire.append([fs,starttime,endtime])
-	# print(schedule.entire)
 	# if len(tempMb) <2: # not used for its purpose in the end
 	# 	schedule.events += tempMb 
 	# else:
@@ -364,7 +360,6 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 	schedule.delegates = delegates
 	schedule.timezone = timezone
 	schedule.order_entire()
-	# print(schedule.entire)
 	schedule.identifyOverlap() # See which events overlap. Doesn't account full overlaps, i.e. for events with same start/ending time
 	# just1List = ['333fm','444bf','555bf','333mbf']
 	just1List = ['333fm','444bf','555bf']
@@ -372,13 +367,11 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 		for person in personInfo:
 			if '333mbf' in personInfo[person].events:
 				personInfo[person].events.remove('333mbf')
-				# print(personInfo[person].availableDuring)
 				for i in range(1,schedule.mbldCounter+1):
 					personInfo[person].events.add(f"333mbf{i}")
 					personInfo[person].prs[f"333mbf{i}"] = personInfo[person].prs[f"333mbf"]
 		for i in range(1,schedule.mbldCounter+1):
 			just1List.append(f"333mbf{i}")
-	# print(schedule.events)
 	for person in personInfo: # Counting the combined events as one
 		already =False
 		for event in personInfo[person].events:
@@ -507,7 +500,6 @@ def convertCompetitorCountToGroups(count,stations):
 def getSubSeqGroupCount(fixedCompetitors,scheduleInfo):
 	if fixedCompetitors:
 		for event in scheduleInfo.entire:
-			# print(event)
 			if event[0][-1] == '2':
 				proceeding = advancementCalculation(scheduleInfo.advancements[event[0][:-1]][1][0],scheduleInfo.advancements[event[0][:-1]][1][1],len(scheduleInfo.eventCompetitors[event[0][:-1]]))
 				scheduleInfo.subSeqAmountCompetitors[event[0]] = proceeding
@@ -687,7 +679,6 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 								checkLegal = True
 								noDelegateOverlap = True
 								for delegate2 in twoDelegates[:idDelegate]:
-									# print(delegate,delegate2)
 									if delegate2 in scheduleInfo.groups[event][idy+1]:
 										noDelegateOverlap = False
 								if noDelegateOverlap:
@@ -759,13 +750,10 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 	final_failed_people = []
 	for ii in range(100): #100 simulations
 		if few_fails > 1:
-			# random.shuffle(combination2)
-			# print(combination2)
 			sh2 = deepcopy(scheduleInfo)
 			pes2 = deepcopy(personInfo)
 			for val in compByCount:
 				random.shuffle(val)
-			# random.shuffle(compByCount)
 			j = len(compByCount) -1
 			fails = 0
 			extras = 0
@@ -789,7 +777,6 @@ def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 											for event2 in pes2[p2[0]].groups:
 												if event2 in combination:
 													# if event in ('skewb','444') and event2 in ('skewb','444'):
-													# 	print(event,event2,idy+1,pes2[p2[0]].groups[event2],sh2.groupTimeChecker(sh2.groupTimes[event][idy+1],sh2.groupTimes[event2][pes2[p2[0]].groups[event2]]))
 													if not sh2.groupTimeChecker(sh2.groupTimes[event][idy+1],sh2.groupTimes[event2][pes2[p2[0]].groups[event2]]):
 														pass # Check that they don't have an overlapping event
 													else:
@@ -1005,12 +992,10 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True):
 				scheduleInfo.groupJudges[event][groupNum] = []
 				if event not in ['333mbf','333mbf1','333mbf2','333mbf3','555bf','444bf']:
 					needed = len(scheduleInfo.groups[event][groupNum])-1
-					# print('event',needed)
 				elif event in ['555bf','444bf']:
 					needed = int(len(scheduleInfo.groups[event][groupNum])/2) + 2
 				else:
 					needed = int(len(scheduleInfo.groups[event][groupNum])/2) + 1
-					# print('event',needed)
 				used = set() # those that were already tried
 				for comp in competitors:
 					if comp not in scheduleInfo.delegates:
@@ -1030,11 +1015,9 @@ def judgePQOverlap(combination,scheduleInfo,personInfo,fixedSeating=True):
 										else:
 											checkLegal = False
 							if checkLegal:
-								# print(event)
 								if len(event) > 4:
 									if event in ['333mbf','333mbf1','333mbf2','333mbf3','555bf','444bf']:
 										if personInfo[comp].wcaId:
-											# print(comp,personInfo[comp].wcaId)
 											pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
 									else:
 										pq.insert([comp,(math.log(len(personInfo[comp].events)))/(personInfo[comp].totalAssignments)])
@@ -1112,7 +1095,6 @@ def reassignJudges(scheduleInfo,personInfo,blacklist = {None},fixed=True, mixed=
 			reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist,fixed)
 		
 def reassignToScrambler(event,group,scheduleInfo,personInfo,blacklist = {None},fixed=True):
-	# print('getting scram',event,group,len(scheduleInfo.groups[event][group]),len(scheduleInfo.groupJudges[event][group]),len(scheduleInfo.groupScramblers[event][group]),len(scheduleInfo.groupRunners[event][group]))
 	scheduleInfo.groupJudges[event][group].sort(key=lambda x:personInfo[x].prs[event]*personInfo[x].orga)
 	scrambler = ''
 	passed = False
@@ -1328,7 +1310,6 @@ def makePDFOverview(scheduleInfo,outfile):
 				pdf.cell(45,6,'Judges')
 				pdf.cell(45,6,'Scramblers')
 				pdf.cell(45,6,'Runners',ln=True)
-				# print(scheduleInfo.groups[event][group])
 				competitors = scheduleInfo.groups[event][group]
 				if event in scheduleInfo.groupJudges:
 					judges = scheduleInfo.groupJudges[event][group]
@@ -1510,7 +1491,6 @@ def compCards(scheduleInfo,personInfo,outfile,mixed={}):
 	personlist.sort(key=lambda x:x.name)
 	progress = 0
 	event_list = []
-	# print(scheduleInfo.events)
 	for event in scheduleInfo.events:
 		sevent = event[0].split('-')
 		for event_ in sevent:
@@ -1587,6 +1567,15 @@ def getStationNumbers(scheduleInfo,personInfo,combined,stages):
 				for idx,person in enumerate(scheduleInfo.groups[event][groupNum]):
 					personInfo[person].stationNumbers[event] = idx+1
 					scheduleInfo.stationOveriew[event][groupNum][person] = idx+1
+		if scheduleInfo.maxAmountGroups > 3:
+			for event in scheduleInfo.eventWOTimes:
+				scheduleInfo.judgeStationOveriew = {}
+				if len(scheduleInfo.groups[event]) > 3:
+					scheduleInfo.judgeStationOveriew[event] = {}
+					for groupNum in scheduleInfo.groups[event]:
+						scheduleInfo.judgeStationOveriew[event][groupNum] = {}
+						for idx,person in enumerate(scheduleInfo.groupJudges[event][groupNum]):
+							scheduleInfo.judgeStationOveriew[event][groupNum][person] = idx+1
 	else:
 		for event in scheduleInfo.eventWOTimes:
 			scheduleInfo.stationOveriew[event] = {}
@@ -1598,13 +1587,30 @@ def getStationNumbers(scheduleInfo,personInfo,combined,stages):
 					for stage in range(stages):
 						if stage == 0:
 							counter +=1
-						# print(int(stage*(scheduleInfo.amountStations/stages) + counter))
 						if realCounter < len(scheduleInfo.groups[event][groupNum]):
 							person = scheduleInfo.groups[event][groupNum][realCounter]
 							personInfo[person].stationNumbers[event] = int(stage*(scheduleInfo.amountStations/stages) + (counter))
 							scheduleInfo.stationOveriew[event][groupNum][person] = int(stage*(scheduleInfo.amountStations/stages) + (counter))
 							realCounter += 1
-							# print(event,groupNum,person,int(stage*(scheduleInfo.amountStations/stages) + (counter)),realCounter)
+
+		if scheduleInfo.maxAmountGroups > 3:
+			scheduleInfo.judgeStationOveriew = {}
+			for event in scheduleInfo.eventWOTimes:
+				scheduleInfo.judgeStationOveriew[event] = {}
+				if len(scheduleInfo.groups[event]) > 3:
+					scheduleInfo.judgeStationOveriew[event][groupNum] = {}
+					for groupNum in scheduleInfo.groups[event]:
+						scheduleInfo.judgeStationOveriew[event][groupNum] = {}
+						counter = 0
+						realCounter = 0
+						while realCounter < len(scheduleInfo.groupJudges[event][groupNum]):
+							for stage in range(stages):
+								if stage == 0:
+									counter +=1
+								if realCounter < len(scheduleInfo.groupJudges[event][groupNum]):
+									person = scheduleInfo.groupJudges[event][groupNum][realCounter]
+									scheduleInfo.judgeStationOveriew[event][groupNum][person] = int(stage*(scheduleInfo.amountStations/stages) + (counter))
+									realCounter += 1
 					
 	if combined: # Fix the assignment back to regular events
 		combHy = combined[0]+'-'+combined[1]
@@ -1752,14 +1758,14 @@ def updateScrambleCount(data,scheduleInfo):
 				scrambleSetCount = scheduleInfo.subSeqGroupCount[event['id']+roundNumber]
 				data['events'][idx]['rounds'][rid]['scrambleSetCount'] = scrambleSetCount
 
-def cleanChildActivityR1WCIF(data,scheduleInfo):
+def cleanChildActivityWCIF(data,scheduleInfo):
 	for vid, venue in enumerate(data['schedule']['venues']):
 		for rid,room in enumerate(venue['rooms']):
 			for aid,activity in enumerate(room['activities']):
 				eventSplit = activity['activityCode'].split('-')
-				if eventSplit[1][-1] == '1' and eventSplit[0] in scheduleInfo.groupTimes:
-					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'] = []
-					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'] = []
+				# if eventSplit[1][-1] == '1' and eventSplit[0] in scheduleInfo.groupTimes: # just for r1
+				data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'] = []
+				data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'] = []
 
 def cleanAssignmentsWCIF(data):
 	for pid,person in enumerate(data['persons']):
@@ -1773,7 +1779,7 @@ def createChildActivityWCIF(data,scheduleInfo):
 			for aid,activity in enumerate(room['activities'])])+1
 	extensionTemplate = {'id': 'groupifier.CompetitionConfig', 
 	'specUrl': 'https://groupifier.jonatanklosko.com/wcif-extensions/CompetitionConfig.json', 
-	'data': {'capacity': 1, 'groups': 1, 'scramblers': 0, 'runners': 0, 'assignJudges': True}}
+	'data': {'capacity': 1, 'groups': 1, 'scramblers': 2, 'runners': 2, 'assignJudges': True}}
 	childTemplate = {'id': 0, 'name': 'Event Name, Round 0, Group 0', 
 	'activityCode': 'wcaeventid-r0-g0', 'startTime': 'yyyy-mm-ddThh:mm:ssZ', 'endTime': 'yyyy-mm-ddThh:mm:ssZ', 
 	'childActivities': [], 'extensions': []}
@@ -1788,9 +1794,7 @@ def createChildActivityWCIF(data,scheduleInfo):
 					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['scramblers'] = len(scheduleInfo.groupScramblers[eventSplit[0]][1])
 					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['runners'] = len(scheduleInfo.groupRunners[eventSplit[0]][1])
 					for gid,groupNum in enumerate(scheduleInfo.groupTimes[eventSplit[0]]):
-						# print(aid)
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'].append(deepcopy(childTemplate))
-						
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['id'] = childIdCounter
 						scheduleInfo.childActivityMapping[eventSplit[0]][groupNum] =childIdCounter
 						childIdCounter += 1
@@ -1800,6 +1804,22 @@ def createChildActivityWCIF(data,scheduleInfo):
 						endTime = str(scheduleInfo.groupTimes[eventSplit[0]][groupNum][1].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['startTime'] = startTime
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['endTime'] = endTime
+				elif eventSplit[0]+eventSplit[1][-1] in scheduleInfo.subSeqGroupCount: # subsequent round extension for groupifier
+					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'].append(deepcopy(extensionTemplate))
+					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['groups'] = scheduleInfo.subSeqGroupCount[eventSplit[0]+eventSplit[1][-1]]
+					# for groupNum in range(1,scheduleInfo.subSeqGroupCount[eventSplit[0]+eventSplit[1][-1]]+1):
+					# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'].append(deepcopy(childTemplate))
+						
+					# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][groupNum-1]['id'] = childIdCounter
+					# 	# scheduleInfo.childActivityMapping[eventSplit[0]][groupNum] =childIdCounter # not fixed for subseq
+					# 	childIdCounter += 1
+					# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][groupNum-1]['name'] = f"{data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['name']}, Round {eventSplit[1][-1]} Group {groupNum}"
+					# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][groupNum-1]['activityCode'] = f"{data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['activityCode']}-g{groupNum}"
+						
+					# 	startTime = str(scheduleInfo.subSeqGroupTimes[eventSplit[0]+eventSplit[1][-1]][groupNum][0].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
+					# 	endTime = str(scheduleInfo.subSeqGroupTimes[eventSplit[0]+eventSplit[1][-1]][groupNum][1].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
+					# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][groupNum-1]['startTime'] = startTime
+					# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][groupNum-1]['endTime'] = endTime
 				else:
 					pass
 		data['schedule']['venues'][vid]['rooms'][rid]['extensions'] = [{"id":"groupifier.RoomConfig","specUrl":"https://groupifier.jonatanklosko.com/wcif-extensions/RoomConfig.json","data":{"stations":scheduleInfo.amountStations}}]
@@ -1818,7 +1838,6 @@ def enterPersonActivitiesWCIF(data,personInfo,scheduleInfo):
 			if person['registration']['status'] == 'accepted':
 				for event in personInfo[person['name']].groups:
 					data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
-					# print("competing",len(data['persons'][pid]['assignments']),depth)
 					data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][personInfo[person['name']].groups[event]]
 					data['persons'][pid]['assignments'][depth]['stationNumber'] = personInfo[person['name']].stationNumbers[event]
 					depth+=1
@@ -1826,10 +1845,16 @@ def enterPersonActivitiesWCIF(data,personInfo,scheduleInfo):
 				for event in personInfo[person['name']].assignments:
 					for assignment in personInfo[person['name']].assignments[event]:
 						data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
-						# print("staffing",len(data['persons'][pid]['assignments']),depth)
 						if type(assignment) == int:
 							data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][assignment]
-							data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-judge"
+							if scheduleInfo.maxAmountGroups > 3:
+								if len(scheduleInfo.groups[event]) > 3:
+									data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-seatedJudge"
+									data['persons'][pid]['assignments'][depth]['stationNumber'] = scheduleInfo.judgeStationOveriew[event][assignment][person['name']]
+								else:
+									data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-runningJudge"
+							else:
+								data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-judge"
 							# data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
 							# depth+=1
 							# data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][assignment]
@@ -1844,7 +1869,6 @@ def enterPersonActivitiesWCIF(data,personInfo,scheduleInfo):
 								assignment = int(assignment[1:])
 								data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][assignment]
 								data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-runner"
-						# scheduleInfo.childActivityMapping[personInfo[person['name']][event]]
 						depth+=1
 
 def genScorecards(scheduleInfo,target,stages):
@@ -1879,8 +1903,6 @@ def callAll(id,stations,stages,postToWCIF,mixed,fixed,customGroups,combined,just
 
 	people,organizers,delegates = competitorBasicInfo(data)
 
-	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups={'333bf':4,'555':3,'minx':3,'skewb':3,'333oh':3,'pyram':3,'222':4,'sq1':4,'333':3},combinedEvents=combined)
-	# schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,combinedEvents=combined,)
 	schedule = scheduleBasicInfo(data,people,organizers,delegates,stations,fixed=fixed,customGroups= customGroups,combinedEvents=combined,just1GroupofBigBLD=just1GroupofBigBLD)
 
 	schedule, people = splitIntoGroups(schedule,people,fixed=fixed)
@@ -1904,15 +1926,13 @@ def callAll(id,stations,stages,postToWCIF,mixed,fixed,customGroups,combined,just
 	
 	CSVForScorecards(schedule,people,combined,f'{target}/{name}stationNumbers.csv')
 	CSVForTimeLimits(schedule,people,combined,f'{target}/{name}timeLimits.csv')
-	stop = time()
-	# print(stop-start)
 	genScorecards(schedule,target,stages)
 	if postToWCIF:
-		confirm = input("Confirm you want to post with 1")
+		confirm = input(f"{id}, Confirm you want to post with 1")
 		updateScrambleCount(data,schedule)
-		cleanChildActivityR1WCIF(data,schedule)
+		cleanChildActivityWCIF(data,schedule)
 		cleanAssignmentsWCIF(data)
-		createChildActivityWCIF(data,schedule,stations)
+		createChildActivityWCIF(data,schedule)
 		enterPersonActivitiesWCIF(data,people,schedule)
 		if confirm == '1':
 			postWcif(id,data,header)
