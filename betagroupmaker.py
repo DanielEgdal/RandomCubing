@@ -13,7 +13,7 @@ from collections import defaultdict
 import random
 import math
 import numpy as np
-import pandas as pd
+from pandas import Timestamp
 import webbrowser
 import requests
 from typing import Dict, Generic, Iterator, List, Optional, TypeVar # For the priority queue
@@ -292,8 +292,8 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 	tempMb = [] # not used for its purpose in the end
 	for id_room, room in enumerate(data["schedule"]["venues"][0]['rooms']): # Assumes room one is the main stage
 		for val in room["activities"]:
-			starttime = pd.Timestamp(val['startTime'][:-1]).tz_localize(pytz.utc).tz_convert(timezone)
-			endtime = pd.Timestamp(val['endTime'][:-1]).tz_localize(pytz.utc).tz_convert(timezone)
+			starttime = Timestamp(val['startTime'][:-1]).tz_localize(pytz.utc).tz_convert(timezone)
+			endtime = Timestamp(val['endTime'][:-1]).tz_localize(pytz.utc).tz_convert(timezone)
 			if val['activityCode'][0] != 'o':
 				if len(val['activityCode']) < 9:
 					if val['activityCode'][-1] not in ['3','2','4'] and val['activityCode'][:-3] not in already_there:
@@ -1850,7 +1850,8 @@ def enterPersonActivitiesWCIF(data,personInfo,scheduleInfo):
 							if scheduleInfo.maxAmountGroups > 3:
 								if len(scheduleInfo.groups[event]) > 3:
 									data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-seatedJudge"
-									data['persons'][pid]['assignments'][depth]['stationNumber'] = scheduleInfo.judgeStationOveriew[event][assignment][person['name']]
+									# Don't tell the judge where to sit by commenting the below line out
+									# data['persons'][pid]['assignments'][depth]['stationNumber'] = scheduleInfo.judgeStationOveriew[event][assignment][person['name']]
 								else:
 									data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-runningJudge"
 							else:
