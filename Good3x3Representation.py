@@ -412,7 +412,7 @@ def checkHTR(c,e,l,oc,oe):
 
 def solveHTR(c,e,oScramble,eoSol,drSol,oc,oe):
     e = 109251305892020226 
-    c = 104189722626
+    c = 108455333922
     for move in oScramble: # Re do the corners and edges in a state where A) it can be checked faster
         c,e = mdic[move](c,e)
     for move in eoSol: # And B) where the equivalent state for this step is not checked multiple times
@@ -510,9 +510,9 @@ def solveScramble(scramble):
     print('')
     print(f"Solution length:\t{len(eoSol)+len(drSol)+len(htrSol)+len(finalSol)}")
 
-breakk = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
+sloww = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
 
-solveScramble("R' L2 F2 U2 B R2 F R2 D2 R2 D' B' U' F R' B F' L'")
+solveScramble("B U2 B D2 L2 D2 F2 U2 F' D2 R2 U' R' U' L' D' B2 F R B D'")
 
 # for i in range(100):
 #     solveEO(startc,starte)
