@@ -1,6 +1,9 @@
-
+from collections import deque
+# from copy import copy,deepcopy
 starte = 407901468851537952
 startc = 247132686368
+solvedC = 247132686368
+solvedE = 407901468851537952
 
 def swap5(k, pos1, pos2):
 	set1 =  (k >> pos1) & 31
@@ -244,17 +247,275 @@ def printbin(c,e):
         ie.append((int(ep[j:j+1],2),int(ep[j+1:j+5],2)))
     print(ie)
 
+def checkEO(e):
+    # Prints False if there is EO solved, else the state of EO
+    # poss = [4, 9, 14,19,24,29,34,39,44,49,54,59]
+    # k = 0
+    # for pos in poss:
+    #     k |= 1 << pos
+    eoState = e & 595056260442243600
+    if not eoState:
+        return False
+    else:
+        return eoState
+
+def checkDRBad(c,e):
+    drCornerCheck = 851234808600
+    cornerState = c & drCornerCheck # If this is 0, the corners are solved
+    if not cornerState:
+        piece1 = ((e >> 20) & 15)
+        if piece1 > 3 and piece1 < 8:
+            piece2 = ((e >> 25) & 15)
+            if piece2 > 3 and piece2 < 8:
+                piece3 = ((e >> 30) & 15)
+                if piece3 > 3 and piece3 < 8:
+                    piece4 = ((e >> 35) & 15)
+                    if piece4 > 3 and piece4 < 8:
+                        return True
+    return False
+
+def checkDR(c,e):
+    # poss = [3, 8, 13,18,23,28,33,38]
+    # k = 0
+    # for pos in poss:
+    #     k |= 3 << pos
+    cornerState = c & 851234808600 # If this is 0, the corners are solved
+    if (not cornerState) and e == 532021248000:
+        return True
+    return False
+
+def solveDR(c,e,oScramble,eoSol):
+    e = 532021248000 
+    c = 248276819175
+    for move in oScramble: # Re do the corners and edges in a state where A) it can be checked faster
+        c,e = mdic[move](c,e)
+    for move in eoSol: # And B) where the equivalent state for this step is not checked multiple times
+        c,e = mdic[move](c,e)
+
+    if checkDR(c,e):
+        return []
+    else:
+        moves = ["R","R'","R2","U","U'","U2","F2","B2","D","D2","D'","L","L2","L'"]
+        q = deque([(c,e,[])])
+        visited = set()
+        while q:
+            c,e,l = q.popleft()
+            for move in moves:
+                _c,_e= mdic[move](c,e)
+                if checkDR(_c,_e):
+                    return l+[move]
+                else:
+                    if (_c,_e) not in visited:
+                        q.append((_c,_e,l+[move]))
+                        visited.add((_c,_e))
+
+def checkHTRBad(c,e):
+    if e & 15 in {0,3,8,11}:
+        if (e >> 15) & 15 in {0,3,8,11}:
+            if (e >> 40) & 15 in {0,3,8,11}:
+                if (e >> 55) & 15 in {0,3,8,11}: # Done edges
+                    if c & 7 in {0,3,4,7}:
+                        if (c>>15) & 7 in {0,3,4,7}:
+                            if (c>>20) & 7 in {0,3,4,7}:
+                                if (c>>35) & 7 in {0,3,4,7}: # Done corner
+                                    if notFakeHTR(c,e):
+                                        return True
+    return False
+
+def notFakeHTR(c,e):
+    moves = ["R2","L2","F2","D2","B2","U2"]
+    q = deque([(c,e,[])])
+    while q:
+        c,e,l = q.popleft()
+        for move in moves:
+            _c,_e= mdic[move](c,e)
+            if _c == solvedC:
+                return True
+            elif len(l) < 4:
+                q.append((_c,_e,l+[move]))
+    return False
+
+def solveEO(c,e):
+    if not checkEO(e):
+        return []
+    else:
+        moves = ["R","R'","R2","U","U'","U2","F","F'","F2","D","D2","D'","L","L2","L'","B","B2","B'"]
+        q = deque([(c,e,[])])
+        visited = set()
+        while q:
+            c,e,l = q.popleft()
+            for move in moves:
+                _c,_e= mdic[move](c,e)
+                eoState = checkEO(_e)
+                if not eoState:
+                    return l+[move]
+                else:
+                    if eoState not in visited:
+                        q.append((_c,_e,l+[move]))
+                        visited.add(eoState)
+
+def solveDRBad(c,e):
+    if checkDRBad(c,e):
+        return []
+    else:
+        moves = ["R","R'","R2","U","U'","U2","F2","B2","D","D2","D'","L","L2","L'"]
+        q = deque([(c,e,[])])
+        visited = set()
+        while q:
+            c,e,l = q.popleft()
+            for move in moves:
+                _c,_e= mdic[move](c,e)
+                if checkDR(_c,_e):
+                    return l+[move]
+                else:
+                    if (_c,_e) not in visited:
+                        q.append((_c,_e,l+[move]))
+                        visited.add((_c,_e))
+
+def solveHTRBad(c,e):
+    if checkHTRBad(c,e):
+        return []
+    else:
+        moves = ["R2","U","U'","U2","F2","B2","D","D2","D'","L2"]
+        q = deque([(c,e,[])])
+        visited = set()
+        while q:
+            c,e,l = q.popleft()
+            for move in moves:
+                _c,_e= mdic[move](c,e)
+                if checkHTRBad(_c,_e):
+                    return l+[move]
+                else:
+                    if (_c,_e) not in visited:
+                        q.append((_c,_e,l+[move]))
+                        visited.add((_c,_e))
+
+def checkHTR(c,e,l,oc,oe):
+    # poss = [1, 16, 21,36]
+    # k = 0
+    # for pos in poss:
+    #     k |= 1 << pos
+
+    # poss = [1, 16, 41,56]
+    # k = 0
+    # for pos in poss:
+    #     k |= 1 << pos
+
+    if (c & 68721639426) == 68721639426 and (e & 72060325082497026) == 72060325082497026:
+        
+        for move in l:
+            oc,oe = mdic[move](oc,oe)
+        # printbin(oc,oe)
+        if notFakeHTR(oc,oe):
+            return True
+    return False
+
+def solveHTR(c,e,oScramble,eoSol,drSol,oc,oe):
+    e = 109251305892020226 
+    c = 104189722626
+    for move in oScramble: # Re do the corners and edges in a state where A) it can be checked faster
+        c,e = mdic[move](c,e)
+    for move in eoSol: # And B) where the equivalent state for this step is not checked multiple times
+        c,e = mdic[move](c,e)
+    for move in drSol: 
+        c,e = mdic[move](c,e)
+    if checkHTR(c,e,[],oc,oe):
+        return []
+    else:
+        moves = ["R2","U","U'","U2","F2","B2","D","D2","D'","L2"]
+        q = deque([(c,e,[])])
+        visited = set()
+        cc = 0
+        while q:
+            # cc+=1
+            # print(cc)
+            c,e,l = q.popleft()
+            for move in moves:
+                _c,_e= mdic[move](c,e)
+                if checkHTR(_c,_e,l+[move],oc,oe):
+                    return l+[move]
+                else:
+                    if (_c,_e) not in visited:
+                        q.append((_c,_e,l+[move]))
+                        visited.add((_c,_e))
+
+
+def solveFromHTR(c,e):
+    if c == solvedC and e == solvedE:
+        return []
+    else:
+        moves = ["R2","U2","F2","B2","D2","L2"]
+        q = deque([(c,e,[])])
+        visited = set()
+        while q:
+            c,e,l = q.popleft()
+            for move in moves:
+                _c,_e= mdic[move](c,e)
+                if _c == solvedC and _e == solvedE:
+                    return l+[move]
+                else:
+                    if (_c,_e) not in visited:
+                        q.append((_c,_e,l+[move]))
+                        visited.add((_c,_e))
 
 # printbin(startc,starte)
 
 # startc,starte = R(startc,starte)
+# print(checkDR(startc,starte))
 
-scramble = "F R D2 U2 R D2 R2 F2 L' U2 R' D2 B' R2 F R2 F' D' U2".split(' ')
+# scramble = "D B D' L2 F2 L2 F2 U' F2 U' L2 B2 U F2 L B' D' R2 D2 F' D".split(' ')
+scramble = "B2 R2 U2 B D2 B D2 R2 D2 R2 F' U2 R F2 D B U B U2 F U2".split(' ')
 mdic = {"R":R,"R'":Rp,"R2'":R2,"R2":R2,"U":U,"U'":Up,"U2":U2,"D":D,"D'":Dp,"D2":D2,"F":F,"F'":Fp,"F2":F2,"U2'":U2,"B":B,"B'":Bp,"B2":B2,"L":L,"L2":L2,"L'":Lp}
 
-for i in range(1000000):
+# for i in range(1000000):
+for move in scramble:
+    startc,starte = mdic[move](startc,starte)
+
+# print(checkDR(startc,starte))
+# print(checkEO(starte))
+
+def solveScramble(scramble):
+    starte = 407901468851537952
+    startc = 247132686368
+    print(scramble)
+    scramble = scramble.split(' ')
     for move in scramble:
         startc,starte = mdic[move](startc,starte)
+
+    eoSol = solveEO(startc,starte)
+    print("EO:",end='\t')
+    for move in eoSol:
+        print(move,end=' ')
+        startc,starte = mdic[move](startc,starte)
+    print('')
+    # drSol = solveDR(startc,starte)
+    drSol = solveDR(startc,starte,scramble,eoSol)
+    print("DR:",end='\t')
+    for move in drSol:
+        print(move,end=' ')
+        startc,starte = mdic[move](startc,starte)
+    print('')
+    # htrSol = solveHTR(startc,starte)
+    htrSol = solveHTR(startc,starte,scramble,eoSol,drSol,startc,starte)
+    # htrSol = solveHTRBad(startc,starte)
+    print("HTR:", end='\t')
+    for move in htrSol:
+        print(move,end=' ')
+        startc,starte = mdic[move](startc,starte)
+    print('')
+    finalSol = solveFromHTR(startc,starte)
+    print("Finish:", end='\t')
+    for move in finalSol:
+        print(move,end=' ')
+    print('')
+    print(f"Solution length:\t{len(eoSol)+len(drSol)+len(htrSol)+len(finalSol)}")
+
+breakk = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
+
+solveScramble("R' L2 F2 U2 B R2 F R2 D2 R2 D' B' U' F R' B F' L'")
+
+# for i in range(100):
+#     solveEO(startc,starte)
 
 # print('after')
 # printbin(startc,starte)
