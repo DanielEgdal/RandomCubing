@@ -1,4 +1,6 @@
 from collections import deque
+import pickle
+import os
 # from copy import copy,deepcopy
 starte = 407901468851537952
 startc = 247132686368
@@ -458,6 +460,72 @@ def solveFromHTR(c,e):
                         q.append((_c,_e,l+[move]))
                         visited.add((_c,_e))
 
+def getFromDRPrune():
+    c = 247132686368
+    e = 407901468851537952
+    moves = ["R2","U","U'","U2","F2","B2","D","D2","D'","L2"]
+    q = deque([(c,e,[])])
+    distt = {(c,e):[]}
+    # i = 0
+    continuee = 1
+    while q and continuee:
+        i+=1
+        c,e,l = q.popleft()
+        for move in moves:
+            _c,_e= mdic[move](c,e)
+            nyL = l+[move]
+            if (_c,_e) not in distt:
+                q.append((_c,_e,nyL))
+                distt[(_c,_e)] = nyL
+            if len(nyL) > 7:
+                continuee = 0
+        # if i%100000 == 0:
+        #     print(i,len(nyL))
+    return distt
+
+def mk_inv(li): # Invert alg
+    inverted = []
+    for trigger in li[::-1]:
+        if len(trigger)== 3:
+            inverted.append(trigger[:2])
+        elif trigger[-1] == "'":
+            inverted.append(trigger[0])
+        elif trigger[-1] == '2':
+            inverted.append(trigger)
+        else:
+            inverted.append(f"{trigger}'")
+    return inverted
+
+def solveFromDRFast(c,e):
+    if c==solvedC and e == solvedE:
+        return []
+    else:
+        if os.path.exists('fromDRPrune.pickle'):
+            with open('fromDRPrune.pickle','rb') as f:
+                disst = pickle.load(f)
+        else:
+            print('first time, genning prune table to finish the cube. Should take like 5 sec with pypy')
+            disst =getFromDRPrune()
+            with open('fromDRPrune.pickle','wb') as f:
+                pickle.dump(disst,f)
+        moves = ["R2","U","U'","U2","F2","B2","D","D2","D'","L2"]
+        q = deque([(c,e,[])])
+        visited = set()
+        cc = 0
+        while q:
+            # cc+=1
+            # print(cc)
+            c,e,l = q.popleft()
+            for move in moves:
+                _c,_e= mdic[move](c,e)
+                if (_c,_e) in disst:
+                    return  l+[move]+ mk_inv(disst[(_c,_e)])
+                else:
+                    if (_c,_e) not in visited:
+                        q.append((_c,_e,l+[move]))
+                        visited.add((_c,_e))
+
+
 # printbin(startc,starte)
 
 # startc,starte = R(startc,starte)
@@ -510,12 +578,40 @@ def solveScramble(scramble):
     print('')
     print(f"Solution length:\t{len(eoSol)+len(drSol)+len(htrSol)+len(finalSol)}")
 
-sloww = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
+def solveScrambleFast(scramble):
+    starte = 407901468851537952
+    startc = 247132686368
+    print(scramble)
+    scramble = scramble.split(' ')
+    for move in scramble:
+        startc,starte = mdic[move](startc,starte)
 
-solveScramble("B U2 B D2 L2 D2 F2 U2 F' D2 R2 U' R' U' L' D' B2 F R B D'")
+    eoSol = solveEO(startc,starte)
+    print("EO:",end='\t')
+    for move in eoSol:
+        print(move,end=' ')
+        startc,starte = mdic[move](startc,starte)
+    print('')
+    # drSol = solveDR(startc,starte)
+    drSol = solveDR(startc,starte,scramble,eoSol)
+    print("DR:",end='\t')
+    for move in drSol:
+        print(move,end=' ')
+        startc,starte = mdic[move](startc,starte)
+    print('')
+    # htrSol = solveHTR(startc,starte)
+    finalSol = solveFromDRFast(startc,starte)
+    # htrSol = solveHTRBad(startc,starte)
+    print("Finish:", end='\t')
+    for move in finalSol:
+        print(move,end=' ')
+    print('')
+    print(f"Solution length:\t{len(eoSol)+len(drSol)+len(finalSol)}")
+    
 
-# for i in range(100):
-#     solveEO(startc,starte)
+# sloww = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
 
-# print('after')
-# printbin(startc,starte)
+# solveScramble("B U2 B D2 L2 D2 F2 U2 F' D2 R2 U' R' U' L' D' B2 F R B D'")
+solveScrambleFast("F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2")
+
+
