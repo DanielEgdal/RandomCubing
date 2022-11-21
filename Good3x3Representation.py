@@ -469,7 +469,7 @@ def getFromDRPrune():
     # i = 0
     continuee = 1
     while q and continuee:
-        i+=1
+        # i+=1
         c,e,l = q.popleft()
         for move in moves:
             _c,_e= mdic[move](c,e)
@@ -477,7 +477,30 @@ def getFromDRPrune():
             if (_c,_e) not in distt:
                 q.append((_c,_e,nyL))
                 distt[(_c,_e)] = nyL
-            if len(nyL) > 7:
+            if len(nyL) > 7: # 7 is fastest when looking at both running and loading
+                continuee = 0
+        # if i%100000 == 0:
+        #     print(i,len(nyL))
+    return distt
+
+def getFromEOToDRPrune():
+    e = 532021248000 
+    c = 248276819175
+    moves = ["R","R'","R2","U","U'","U2","F2","B2","D","D2","D'","L","L2","L'"]
+    q = deque([(c,e,[])])
+    distt = {(c,e):[]}
+    # i = 0
+    continuee = 1
+    while q and continuee:
+        # i+=1
+        c,e,l = q.popleft()
+        for move in moves:
+            _c,_e= mdic[move](c,e)
+            nyL = l+[move]
+            if (_c,_e) not in distt:
+                q.append((_c,_e,nyL))
+                distt[(_c,_e)] = nyL
+            if len(nyL) > 7: # 7 is faster because of loading in later
                 continuee = 0
         # if i%100000 == 0:
         #     print(i,len(nyL))
@@ -525,6 +548,42 @@ def solveFromDRFast(c,e):
                         q.append((_c,_e,l+[move]))
                         visited.add((_c,_e))
 
+def EOToDR(c,e,oScramble,eoSol):
+    e = 532021248000 
+    c = 248276819175
+    for move in oScramble: # Re do the corners and edges in a state where A) it can be checked faster
+        c,e = mdic[move](c,e)
+    for move in eoSol: # And B) where the equivalent state for this step is not checked multiple times
+        c,e = mdic[move](c,e)
+
+
+    if os.path.exists('fromEOToDRPrune.pickle'):
+        with open('fromEOToDRPrune.pickle','rb') as f:
+            disst = pickle.load(f)
+    else:
+        print('first time, genning prune table to get EO -> DR. Should take like 5 sec with pypy')
+        disst =getFromEOToDRPrune()
+        with open('fromEOToDRPrune.pickle','wb') as f:
+            pickle.dump(disst,f)
+    
+    if (c,e) in disst:
+        return mk_inv(disst[(c,e)])
+    moves = ["R","R'","R2","U","U'","U2","F2","B2","D","D2","D'","L","L2","L'"]
+    q = deque([(c,e,[])])
+    visited = set()
+    cc = 0
+    while q:
+        # cc+=1
+        # print(cc)
+        c,e,l = q.popleft()
+        for move in moves:
+            _c,_e= mdic[move](c,e)
+            if (_c,_e) in disst:
+                return  l+[move]+ mk_inv(disst[(_c,_e)])
+            else:
+                if (_c,_e) not in visited:
+                    q.append((_c,_e,l+[move]))
+                    visited.add((_c,_e))
 
 # printbin(startc,starte)
 
@@ -593,7 +652,8 @@ def solveScrambleFast(scramble):
         startc,starte = mdic[move](startc,starte)
     print('')
     # drSol = solveDR(startc,starte)
-    drSol = solveDR(startc,starte,scramble,eoSol)
+    # drSol = solveDR(startc,starte,scramble,eoSol)
+    drSol = EOToDR(startc,starte,scramble,eoSol)
     print("DR:",end='\t')
     for move in drSol:
         print(move,end=' ')
@@ -609,9 +669,9 @@ def solveScrambleFast(scramble):
     print(f"Solution length:\t{len(eoSol)+len(drSol)+len(finalSol)}")
     
 
-# sloww = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
+sloww = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
 
 # solveScramble("B U2 B D2 L2 D2 F2 U2 F' D2 R2 U' R' U' L' D' B2 F R B D'")
-solveScrambleFast("F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2")
-
-
+# solveScrambleFast("R2 F U2 L2 B' F' R2 F' L2 F2 D2 U' R' D2 L' D' R' B2 F U2")
+solveScrambleFast(sloww)
+# getFromEOToDRPrune()
