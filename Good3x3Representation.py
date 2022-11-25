@@ -519,18 +519,21 @@ def mk_inv(li): # Invert alg
             inverted.append(f"{trigger}'")
     return inverted
 
-def solveFromDRFast(c,e):
+def solveFromDRFast(c,e,given=False):
     if c==solvedC and e == solvedE:
         return []
     else:
-        if os.path.exists('fromDRPrune.pickle'):
-            with open('fromDRPrune.pickle','rb') as f:
-                disst = pickle.load(f)
+        if not given:
+            if os.path.exists('fromDRPrune.pickle'):
+                with open('fromDRPrune.pickle','rb') as f:
+                    disst = pickle.load(f)
+            else:
+                print('first time, genning prune table to finish the cube. Should take like 5 sec with pypy')
+                disst =getFromDRPrune()
+                with open('fromDRPrune.pickle','wb') as f:
+                    pickle.dump(disst,f)
         else:
-            print('first time, genning prune table to finish the cube. Should take like 5 sec with pypy')
-            disst =getFromDRPrune()
-            with open('fromDRPrune.pickle','wb') as f:
-                pickle.dump(disst,f)
+            disst = given
         moves = ["R2","U","U'","U2","F2","B2","D","D2","D'","L2"]
         q = deque([(c,e,[])])
         visited = set()
@@ -548,7 +551,7 @@ def solveFromDRFast(c,e):
                         q.append((_c,_e,l+[move]))
                         visited.add((_c,_e))
 
-def EOToDR(c,e,oScramble,eoSol):
+def EOToDR(c,e,oScramble,eoSol,given=False):
     e = 532021248000 
     c = 248276819175
     for move in oScramble: # Re do the corners and edges in a state where A) it can be checked faster
@@ -556,15 +559,17 @@ def EOToDR(c,e,oScramble,eoSol):
     for move in eoSol: # And B) where the equivalent state for this step is not checked multiple times
         c,e = mdic[move](c,e)
 
-
-    if os.path.exists('fromEOToDRPrune.pickle'):
-        with open('fromEOToDRPrune.pickle','rb') as f:
-            disst = pickle.load(f)
+    if not given:
+        if os.path.exists('fromEOToDRPrune.pickle'):
+            with open('fromEOToDRPrune.pickle','rb') as f:
+                disst = pickle.load(f)
+        else:
+            print('first time, genning prune table to get EO -> DR. Should take like 5 sec with pypy')
+            disst =getFromEOToDRPrune()
+            with open('fromEOToDRPrune.pickle','wb') as f:
+                pickle.dump(disst,f)
     else:
-        print('first time, genning prune table to get EO -> DR. Should take like 5 sec with pypy')
-        disst =getFromEOToDRPrune()
-        with open('fromEOToDRPrune.pickle','wb') as f:
-            pickle.dump(disst,f)
+        disst = given
     
     if (c,e) in disst:
         return mk_inv(disst[(c,e)])
@@ -595,8 +600,8 @@ scramble = "B2 R2 U2 B D2 B D2 R2 D2 R2 F' U2 R F2 D B U B U2 F U2".split(' ')
 mdic = {"R":R,"R'":Rp,"R2'":R2,"R2":R2,"U":U,"U'":Up,"U2":U2,"D":D,"D'":Dp,"D2":D2,"F":F,"F'":Fp,"F2":F2,"U2'":U2,"B":B,"B'":Bp,"B2":B2,"L":L,"L2":L2,"L'":Lp}
 
 # for i in range(1000000):
-for move in scramble:
-    startc,starte = mdic[move](startc,starte)
+# for move in scramble:
+#     startc,starte = mdic[move](startc,starte)
 
 # print(checkDR(startc,starte))
 # print(checkEO(starte))
@@ -637,6 +642,96 @@ def solveScramble(scramble):
     print('')
     print(f"Solution length:\t{len(eoSol)+len(drSol)+len(htrSol)+len(finalSol)}")
 
+
+def zScramble(scramble):
+    # Z rotation, scramble pre split
+    newScramble = []
+    for move in scramble:
+        # print(move)
+        if move[0] == 'R':
+            newScramble.append("U"+move[1:])
+        elif move[0] == 'L':
+            newScramble.append("D"+move[1:])
+        elif move[0] == 'U':
+            newScramble.append("L"+move[1:])
+        elif move[0] == 'D':
+            newScramble.append("R"+move[1:])
+        else:
+            newScramble.append(move)
+    return newScramble
+
+def yScramble(scramble):
+    # y rotation, scramble pre split
+    newScramble = []
+    for move in scramble:
+        # print(move)
+        if move[0] == 'R':
+            newScramble.append("B"+move[1:])
+        elif move[0] == 'L':
+            newScramble.append("F"+move[1:])
+        elif move[0] == 'F':
+            newScramble.append("R"+move[1:])
+        elif move[0] == 'B':
+            newScramble.append("L"+move[1:])
+        else:
+            newScramble.append(move)
+    return newScramble
+
+def zpScramble(scramble):
+    newScramble = []
+    for move in scramble:
+        # print(move)
+        if move[0] == 'R':
+            newScramble.append("D"+move[1:])
+        elif move[0] == 'L':
+            newScramble.append("U"+move[1:])
+        elif move[0] == 'U':
+            newScramble.append("R"+move[1:])
+        elif move[0] == 'D':
+            newScramble.append("L"+move[1:])
+        else:
+            newScramble.append(move)
+    return newScramble
+
+def ypScramble(scramble):
+    newScramble = []
+    for move in scramble:
+        # print(move)
+        if move[0] == 'R':
+            newScramble.append("F"+move[1:])
+        elif move[0] == 'L':
+            newScramble.append("B"+move[1:])
+        elif move[0] == 'F':
+            newScramble.append("L"+move[1:])
+        elif move[0] == 'B':
+            newScramble.append("R"+move[1:])
+        else:
+            newScramble.append(move)
+    return newScramble
+
+def rotatedScrambles(scramble):
+    from copy import copy
+    scrambles = [scramble]
+    rots = {'z':zScramble,'y':yScramble}
+    reverse = [[]]
+    for posDr in [['z'],['y'],['y','z'],['z','y'],['z','y','z']]:
+        tempScramble = copy(scramble)
+        tempReverse = []
+        for rot in posDr:
+            tempScramble = rots[rot](tempScramble)
+            tempReverse.append(rot)
+        scrambles.append(tempScramble)
+        reverse.append(tempReverse)
+    return scrambles,reverse
+
+def doReverseRotate(sol,rotations):
+    rots = {'z':zpScramble,'y':ypScramble}
+    if rotations:
+        for rot in rotations[::-1]:
+            sol = rots[rot](sol)
+    
+    return sol
+
 def solveScrambleFast(scramble):
     starte = 407901468851537952
     startc = 247132686368
@@ -669,9 +764,71 @@ def solveScrambleFast(scramble):
     print(f"Solution length:\t{len(eoSol)+len(drSol)+len(finalSol)}")
     
 
+def solveScrambleAllDRAxis(scramble):
+    print(scramble)
+    scramble = scramble.split(' ')
+    scrambleList,reversing = rotatedScrambles(scramble)
+    # Prune to finish cube
+    if os.path.exists('fromDRPrune.pickle'):
+        with open('fromDRPrune.pickle','rb') as f:
+            fromDRPrune = pickle.load(f)
+    else:
+        print('first time, genning prune table to finish the cube. Should take like 5 sec with pypy')
+        fromDRPrune =getFromDRPrune()
+        with open('fromDRPrune.pickle','wb') as f:
+            pickle.dump(fromDRPrune,f)
+
+    # Prune to fast DR
+    if os.path.exists('fromEOToDRPrune.pickle'):
+        with open('fromEOToDRPrune.pickle','rb') as f:
+            fromEOToDRPrune = pickle.load(f)
+    else:
+        print('first time, genning prune table to get EO -> DR. Should take like 5 sec with pypy')
+        fromEOToDRPrune =getFromEOToDRPrune()
+        with open('fromEOToDRPrune.pickle','wb') as f:
+            pickle.dump(fromEOToDRPrune,f)
+    
+    for scramble,rev in zip(scrambleList,reversing):
+        print(f"Solving for axis {rev}")
+        starte = 407901468851537952
+        startc = 247132686368
+        for move in scramble:
+            startc,starte = mdic[move](startc,starte)
+
+        eoSol = solveEO(startc,starte)
+        print("EO:",end='\t')
+        eoSolPrint = doReverseRotate(eoSol,rev)
+        for move in eoSolPrint:
+            print(move,end=' ')
+        for move in eoSol:
+            startc,starte = mdic[move](startc,starte)
+        print(f'\t{len(eoSol)}')
+        drSol = EOToDR(startc,starte,scramble,eoSol,fromEOToDRPrune)
+        drSolPrint = doReverseRotate(drSol,rev)
+
+        print("DR:",end='\t')
+        for move in drSolPrint:
+            print(move,end=' ')
+        for move in drSol:
+            startc,starte = mdic[move](startc,starte)
+        print(f'\t{len(drSolPrint)}')
+        
+        finalSol = solveFromDRFast(startc,starte,fromDRPrune)
+        finalSolPrint = doReverseRotate(finalSol,rev)
+        print("Finish:", end='\t')
+        for move in finalSolPrint:
+            print(move,end=' ')
+        print(f'\t{len(finalSolPrint)}')
+        print(f"Solution length:\t{len(eoSol)+len(drSol)+len(finalSol)}\n")
+
 sloww = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
+
+# for i in range(1_000_000_000):
+#     startc,starte = U(startc,starte)
 
 # solveScramble("B U2 B D2 L2 D2 F2 U2 F' D2 R2 U' R' U' L' D' B2 F R B D'")
 # solveScrambleFast("R2 F U2 L2 B' F' R2 F' L2 F2 D2 U' R' D2 L' D' R' B2 F U2")
-solveScrambleFast(sloww)
+# solveScrambleFast("R2 U L2 U2 L2 U' L2 R2 D F2 U L2 R' B2 D' R' U L' F' L B'")
 # getFromEOToDRPrune()
+
+solveScrambleAllDRAxis("U2 R2 D' U2 R2 B2 D' U2 B2 L2 F2 L D U2 L2 R' B D' F' R2 D2")
