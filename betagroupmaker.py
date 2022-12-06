@@ -5,7 +5,10 @@
 
 import collections
 import os
-from time import time
+from pickle import TRUE
+from time import time,sleep
+from flask import Flask,request
+import subprocess
 import json
 from datetime import datetime
 from copy import deepcopy
@@ -17,8 +20,9 @@ from pandas import Timestamp
 import webbrowser
 import requests
 from typing import Dict, Generic, Iterator, List, Optional, TypeVar # For the priority queue
-from fpdf import FPDF # For pdfs
+from fpdf import FPDF # For pdfs. pip3 install fpdf2
 import pytz # for timezones
+import socket
 
 Key = TypeVar("Key")
 
@@ -495,6 +499,8 @@ def convertCompetitorCountToGroups(count,stations):
 	expectedGroupNumber = math.ceil(count/stations)
 	if expectedGroupNumber < 2:
 		print("just one group for a subseq rounds, check if this inteded")
+		print("manually bumping to 2")
+		expectedGroupNumber+=1
 	return expectedGroupNumber
 
 def getSubSeqGroupCount(fixedCompetitors,scheduleInfo):
@@ -551,11 +557,11 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,fixed=True):
 	dontSpeedScramble = ['333bf','444bf','555bf'] # for some reason very import to be list, otherwise reads substring
 	groups = scheduleInfo.groups[event]
 	totalComp = scheduleInfo.eventCompetitors[event]
-	perGroup = len(totalComp)/len(groups)
+	perGroup = int(len(totalComp)/len(groups))
 	if event == '444': # manual amount of scramblers...
-		scramblerCount = round(perGroup/5)
+		scramblerCount = round((len(totalComp)/len(groups))/5)
 	else:
-		scramblerCount = round(perGroup/5)
+		scramblerCount = round((len(totalComp)/len(groups))/5)
 	p2 = deepcopy(totalComp)
 	# special stuff when there are multiple delegates
 	delegateCompetitors = [compDel for compDel in scheduleInfo.delegates if compDel in totalComp]
@@ -589,6 +595,9 @@ def splitNonOverlapGroups(scheduleInfo,personInfo,event,fixed=True):
 				p2 = popCompetitorAssign(p2,groups,personInfo,event,groupNum,False)
 	while len(p2) > 0: # If some people were somehow left out, add them in the last group
 		p2 = popCompetitorAssign(p2,groups,personInfo,event,groupNum,False)
+		groupNum = (groupNum+1) % len(groups[groupNum])
+		if not groupNum:
+			groupNum += 1
 
 def splitIntoOverlapGroups(scheduleInfo,personInfo,combination,fixed):
 	"""
@@ -869,10 +878,10 @@ def assignJudgesFromPQ(scheduleInfo,personInfo,event,groupNum,pq,needed,atleast1
 
 def getNeededStaffCount(scheduleInfo,event,groupNum): # This probably needs some work
 	groupSize = len(scheduleInfo.groups[event][groupNum])
-	scramblerCount = round(groupSize/5)
+	scramblerCount = round(groupSize/3.4)
 	
-	if len(scheduleInfo.groups[event])> 3: # account for runners too
-		scramblerCount *= 2
+	# if len(scheduleInfo.groups[event])> 3: # account for runners too
+	# 	scramblerCount *= 2
 	if event in {'333bf','444bf','555bf'}:
 		needed = groupSize + 2
 	else:
@@ -880,6 +889,7 @@ def getNeededStaffCount(scheduleInfo,event,groupNum): # This probably needs some
 	return needed
 
 def assignJudgesPQNonOverlapStyle(event,scheduleInfo,personInfo):
+	print('hej')
 	scheduleInfo.groupJudges[event] = {}
 	groups = scheduleInfo.groups[event]
 	atleast1 = set() # Make sure everyone judges at least once before giving two assignments to other people
@@ -905,7 +915,7 @@ def judgePQNonOverlap(event,scheduleInfo,personInfo,fixedSeating=True):
 	if fixedSeating:
 		assignJudgesPQNonOverlapStyle(event,scheduleInfo,personInfo)
 	else:
-		if (event not in ['no event here']) and len(scheduleInfo.groups[event]) < 4: # Give just one assignment in the event per competitor
+		if (event not in ['no event here']): # Give just one assignment in the event per competitor
 			scheduleInfo.groupJudges[event] = {}
 			groups = scheduleInfo.groups[event]
 			for group in groups:
@@ -1200,9 +1210,14 @@ def determineScrambleCount(scheduleInfo,personInfo,event,groupNum):
 	if event == '333bf':
 		return 1
 	else:
-		scramblers = round(groupSize/5)
-		while (judgeCount-scramblers)/groupSize < 0.6:
-			scramblers -=1
+		# scramblers = round(groupSize/3)
+		scramblers = 4
+		# if groupSize <= 13:
+		# 	scramblers = 2
+		# else:
+		# 	scramblers = 4 # manual
+		# while (judgeCount-scramblers)/groupSize < 0.6:
+		# 	scramblers -=1
 		return scramblers
 
 def reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist = {None},fixed=True):
@@ -1210,7 +1225,7 @@ def reassignJudgesEvents(event,scheduleInfo,personInfo,blacklist = {None},fixed=
 			scheduleInfo.groupScramblers[event][groupNum] = []
 			scheduleInfo.groupRunners[event][groupNum] = []
 	if event[:-1] != '333mbf' and event not in ['444bf','555bf']:
-		if fixed or len(scheduleInfo.groups[event]) >3:
+		if fixed: #or len(scheduleInfo.groups[event]) >3
 			for groupNum in scheduleInfo.groups[event]:
 				if event in scheduleInfo.groupJudges:
 					if len(scheduleInfo.groupJudges[event][groupNum]) > 0: # If judges are assigned for the event
@@ -1379,7 +1394,7 @@ def makePDFOverview(scheduleInfo,outfile):
 				pdf.set_font('DejaVu','',14)
 				pdf.cell(65,6,f'{scheduleInfo.subSeqGroupTimes[event+roundNumber][group][0].time()}-{scheduleInfo.subSeqGroupTimes[event+roundNumber][group][1].time()}',ln=True)
 				pdf.set_font('DejaVu','',12)
-				pdf.cell(65,6,f'Forventer {scheduleInfo.subSeqAmountCompetitors[event+roundNumber]/len(scheduleInfo.subSeqGroupTimes[event+roundNumber])} deltagere',ln=True)
+				pdf.cell(65,6,f'Forventer {round(scheduleInfo.subSeqAmountCompetitors[event+roundNumber]/len(scheduleInfo.subSeqGroupTimes[event+roundNumber]),2)} deltagere',ln=True)
 		else:
 			pdf.set_font('DejaVub','',20)
 			pdf.cell(65,6,f'{activity[0][:-1]}',ln=True)
@@ -1447,11 +1462,11 @@ def eventPatch(personInfo,personlist,scheduleInfo,progress,event,ln,pdf,mixed={}
 			judge = 'Døm(sid):' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge(sit):'
 		else:
 			judge = 'Døm(løb):' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge(run):'
-	elif scheduleInfo.maxAmountGroups > 3:
-		if len(scheduleInfo.groups[event]) > 3:
-			judge = 'Døm(sid):' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge(sit):'
-		else:
-			judge = 'Døm(løb):' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge(run):'
+	# elif scheduleInfo.maxAmountGroups > 3:
+	# 	if len(scheduleInfo.groups[event]) > 3:
+	# 		judge = 'Døm(sid):' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge(sit):'
+	# 	else:
+	# 		judge = 'Døm(løb):' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge(run):'
 	else:
 		judge = 'Døm:' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Judge:'
 	scram = 'Bland:' if personInfo[personlist[progress].name].citizenship == 'DK' else 'Scramb:'
@@ -1567,15 +1582,15 @@ def getStationNumbers(scheduleInfo,personInfo,combined,stages):
 				for idx,person in enumerate(scheduleInfo.groups[event][groupNum]):
 					personInfo[person].stationNumbers[event] = idx+1
 					scheduleInfo.stationOveriew[event][groupNum][person] = idx+1
-		if scheduleInfo.maxAmountGroups > 3:
-			for event in scheduleInfo.eventWOTimes:
-				scheduleInfo.judgeStationOveriew = {}
-				if len(scheduleInfo.groups[event]) > 3:
-					scheduleInfo.judgeStationOveriew[event] = {}
-					for groupNum in scheduleInfo.groups[event]:
-						scheduleInfo.judgeStationOveriew[event][groupNum] = {}
-						for idx,person in enumerate(scheduleInfo.groupJudges[event][groupNum]):
-							scheduleInfo.judgeStationOveriew[event][groupNum][person] = idx+1
+		# if scheduleInfo.maxAmountGroups > 3:
+		# 	for event in scheduleInfo.eventWOTimes:
+		# 		scheduleInfo.judgeStationOveriew = {}
+		# 		if len(scheduleInfo.groups[event]) > 3:
+		# 			scheduleInfo.judgeStationOveriew[event] = {}
+		# 			for groupNum in scheduleInfo.groups[event]:
+		# 				scheduleInfo.judgeStationOveriew[event][groupNum] = {}
+		# 				for idx,person in enumerate(scheduleInfo.groupJudges[event][groupNum]):
+		# 					scheduleInfo.judgeStationOveriew[event][groupNum][person] = idx+1
 	else:
 		for event in scheduleInfo.eventWOTimes:
 			scheduleInfo.stationOveriew[event] = {}
@@ -1593,24 +1608,24 @@ def getStationNumbers(scheduleInfo,personInfo,combined,stages):
 							scheduleInfo.stationOveriew[event][groupNum][person] = int(stage*(scheduleInfo.amountStations/stages) + (counter))
 							realCounter += 1
 
-		if scheduleInfo.maxAmountGroups > 3:
-			scheduleInfo.judgeStationOveriew = {}
-			for event in scheduleInfo.eventWOTimes:
-				scheduleInfo.judgeStationOveriew[event] = {}
-				if len(scheduleInfo.groups[event]) > 3:
-					scheduleInfo.judgeStationOveriew[event][groupNum] = {}
-					for groupNum in scheduleInfo.groups[event]:
-						scheduleInfo.judgeStationOveriew[event][groupNum] = {}
-						counter = 0
-						realCounter = 0
-						while realCounter < len(scheduleInfo.groupJudges[event][groupNum]):
-							for stage in range(stages):
-								if stage == 0:
-									counter +=1
-								if realCounter < len(scheduleInfo.groupJudges[event][groupNum]):
-									person = scheduleInfo.groupJudges[event][groupNum][realCounter]
-									scheduleInfo.judgeStationOveriew[event][groupNum][person] = int(stage*(scheduleInfo.amountStations/stages) + (counter))
-									realCounter += 1
+		# if scheduleInfo.maxAmountGroups > 3:
+		# 	scheduleInfo.judgeStationOveriew = {}
+		# 	for event in scheduleInfo.eventWOTimes:
+		# 		scheduleInfo.judgeStationOveriew[event] = {}
+		# 		if len(scheduleInfo.groups[event]) > 3:
+		# 			scheduleInfo.judgeStationOveriew[event][groupNum] = {}
+		# 			for groupNum in scheduleInfo.groups[event]:
+		# 				scheduleInfo.judgeStationOveriew[event][groupNum] = {}
+		# 				counter = 0
+		# 				realCounter = 0
+		# 				while realCounter < len(scheduleInfo.groupJudges[event][groupNum]):
+		# 					for stage in range(stages):
+		# 						if stage == 0:
+		# 							counter +=1
+		# 						if realCounter < len(scheduleInfo.groupJudges[event][groupNum]):
+		# 							person = scheduleInfo.groupJudges[event][groupNum][realCounter]
+		# 							scheduleInfo.judgeStationOveriew[event][groupNum][person] = int(stage*(scheduleInfo.amountStations/stages) + (counter))
+		# 							realCounter += 1
 					
 	if combined: # Fix the assignment back to regular events
 		combHy = combined[0]+'-'+combined[1]
@@ -1723,23 +1738,55 @@ def competitorForOTS(personInfo,name,id,citizenship,gender,wcaid,events,age):
 	comp.age = age
 	personInfo[name] = comp
 
-def genToken():
-	# alternatively remove the .get part if the browser is causing you an issue, or just open the url yourself and save the code to a file
-	webbrowser.get("x-www-browser").open("https://www.worldcubeassociation.org/oauth/authorize?client_id=8xB-6U1fFcZ9PAy80pALi9E7nzfoF44W4cMPyIUXrgY&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=token&scope=manage_competitions+public",new=0)
-	token = input("A browser should open. Copy the token from the URL and paste it here")
+# def clientTest():
+# 	client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# 	client.connect(('localhost', 8001))
+# # 	webpage = "https://www.worldcubeassociation.org/oauth/authorize?client_id=8xB-6U1fFcZ9PAy80pALi9E7nzfoF44W4cMPyIUXrgY&redirect_uri=http%3A%2F%2Flocalhost%3A8001&response_type=token&scope=manage_competitions+public"
+# # 	webbrowser.get("x-www-browser").open(webpage,new=0)
+# 	token = client.recv(64).decode()
+# 	return token
+
+def genTokenLengthy():
+	subprocess.Popen(["python3 flaskServer.py"], shell=True,stdin=None, stdout=None, stderr=None, close_fds=True)
+	webpage = "https://www.worldcubeassociation.org/oauth/authorize?client_id=8xB-6U1fFcZ9PAy80pALi9E7nzfoF44W4cMPyIUXrgY&redirect_uri=http%3A%2F%2Flocalhost%3A8001&response_type=code&scope=manage_competitions+public"
+	webbrowser.get("x-www-browser").open(webpage,new=0)
+	# token = clientTest()
+	# print(token)
+	sleep(1)
+	# print(token)
+	# return token
+
+
+def genTokenNoob():
+	# webpage = "https://www.worldcubeassociation.org/oauth/authorize?client_id=8xB-6U1fFcZ9PAy80pALi9E7nzfoF44W4cMPyIUXrgY&redirect_uri=http%3A%2F%2Flocalhost%3A8001&response_type=token&scope=manage_competitions+public"
+	webpage = "https://www.worldcubeassociation.org/oauth/authorize?client_id=8xB-6U1fFcZ9PAy80pALi9E7nzfoF44W4cMPyIUXrgY&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&response_type=token&scope=manage_competitions+public" # copy manually
+	webbrowser.get("x-www-browser").open(webpage,new=0)
+
+	token = input("A browser should open. Copy the token from the URL and paste it here") # old when manually input
+
 	return token
+
+def getHeaderForWCIF():
+	# genTokenLengthy()
+	token = genTokenNoob()
+	with open('authcode','w') as f:
+		f.write(token.strip())
+	return {'Authorization':f"Bearer {token}"}
 
 def getWcif(id):
 	if not os.path.exists("authcode"):
-		token = genToken()
-		with open('authcode','w') as f:
-			print(token,file=f)
+		header = getHeaderForWCIF()
 	else:
 		with open('authcode','r') as f:
 			token = f.readline().strip('\n')
-	header = {'Authorization':f"Bearer {token}"}
-	
-	wcif = requests.get(f"https://www.worldcubeassociation.org/api/v0/competitions/{id}/wcif",headers=header)
+			header = {'Authorization':f"Bearer {token}"}
+	while True:
+		wcif = requests.get(f"https://www.worldcubeassociation.org/api/v0/competitions/{id}/wcif",headers=header)
+		if wcif.status_code == 401:
+			header = getHeaderForWCIF()
+			wcif = requests.get(f"https://www.worldcubeassociation.org/api/v0/competitions/{id}/wcif",headers=header)
+		else:
+			break
 	assert wcif.status_code == 200
 	return wcif,header
 
@@ -1847,15 +1894,15 @@ def enterPersonActivitiesWCIF(data,personInfo,scheduleInfo):
 						data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
 						if type(assignment) == int:
 							data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][assignment]
-							if scheduleInfo.maxAmountGroups > 3:
-								if len(scheduleInfo.groups[event]) > 3:
-									data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-seatedJudge"
-									# Don't tell the judge where to sit by commenting the below line out
-									# data['persons'][pid]['assignments'][depth]['stationNumber'] = scheduleInfo.judgeStationOveriew[event][assignment][person['name']]
-								else:
-									data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-runningJudge"
-							else:
-								data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-judge"
+							# if scheduleInfo.maxAmountGroups > 3:
+							# 	if len(scheduleInfo.groups[event]) > 3:
+							# 		data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-seatedJudge"
+							# 		# Don't tell the judge where to sit by commenting the below line out
+							# 		# data['persons'][pid]['assignments'][depth]['stationNumber'] = scheduleInfo.judgeStationOveriew[event][assignment][person['name']]
+							# 	else:
+							# 		data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-runningJudge"
+							# else:
+							data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-judge"
 							# data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
 							# depth+=1
 							# data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][assignment]
@@ -1872,7 +1919,7 @@ def enterPersonActivitiesWCIF(data,personInfo,scheduleInfo):
 								data['persons'][pid]['assignments'][depth]['assignmentCode'] = "staff-runner"
 						depth+=1
 
-def genScorecards(scheduleInfo,target,stages):
+def genScorecards(scheduleInfo,target,stations,stages,differentColours):
 	name = scheduleInfo.name
 	if not os.path.isdir("WCA_Scorecards"):
 		os.system('git clone https://github.com/Daniel-Anker-Hermansen/WCA_Scorecards.git')
@@ -1880,18 +1927,29 @@ def genScorecards(scheduleInfo,target,stages):
 
 	# get direct path from running 'whereis cargo'
 	# os.system(f" /home/degdal/.cargo/bin/cargo run --release -- --r1 ../{target}/{name}stationNumbers{filenameSave}.csv  ../{target}/{name}timeLimits.csv  '{schedule.longName}'")
-	if stages:
-		os.system(f"target/release/wca_scorecards --r1 ../{target}/{name}stationNumbers.csv  ../{target}/{name}timeLimits.csv  '{scheduleInfo.longName}' --stages R-10 G-10 B-10")
+	if differentColours:
+		perStage = int(stations/stages)
+		# print(perStage)
+		if stations%stages != 0:
+			print("stages and stations is not properly divisible")
+		if stages == 2:
+			j = f"R-{perStage} G-{perStage}"
+		elif stages == 3:
+			j = f"R-{perStage} G-{perStage} B-{perStage}"
+		else:
+			print("number of stations in code not fitted to print this many colours. Easy fix in the code")
+		os.system(f"target/release/wca_scorecards --r1 ../{target}/{name}stationNumbers.csv  ../{target}/{name}timeLimits.csv  '{scheduleInfo.longName}' --stages {j}")
 	else:
 		os.system(f"target/release/wca_scorecards --r1 ../{target}/{name}stationNumbers.csv  ../{target}/{name}timeLimits.csv  '{scheduleInfo.longName}'")
 	
 	filenameToMove = "".join(scheduleInfo.longName.split(' '))
-	if stages:
+	if differentColours:
 		os.system(f'mv {filenameToMove}_scorecards.zip ../{target}/{filenameToMove}Scorecards.zip')
+		# os.system(f"unzip ../{target}/{filenameToMove}Scorecards.zip")
 	else:
 		os.system(f'mv {filenameToMove}_scorecards.pdf ../{target}/{filenameToMove}Scorecards.pdf')
 
-def callAll(id,stations,stages,postToWCIF,mixed,fixed,customGroups,combined,just1GroupofBigBLD):
+def callAll(id,stations,stages,differentColours,postToWCIF,mixed,fixed,customGroups,combined,just1GroupofBigBLD):
 	path = f"../{id}"
 	if not os.path.isdir(path):
 		os.mkdir(path)
@@ -1909,11 +1967,11 @@ def callAll(id,stations,stages,postToWCIF,mixed,fixed,customGroups,combined,just
 	schedule, people = splitIntoGroups(schedule,people,fixed=fixed)
 
 	assignJudges(schedule,people,fixed,mixed=mixed)
-	
-	sblacklist = open('sblacklist.txt').readlines()
 	set_sblacklist = set()
-	for i in sblacklist:
-		set_sblacklist.add(i.strip('\n'))
+	if os.path.exists('sblacklist.txt'):
+		with open('sblacklist.txt') as f:
+			for line in f:
+				set_sblacklist.add(line.strip())
 
 	reassignJudges(schedule,people,set_sblacklist,fixed,mixed=mixed)
 
@@ -1927,7 +1985,7 @@ def callAll(id,stations,stages,postToWCIF,mixed,fixed,customGroups,combined,just
 	
 	CSVForScorecards(schedule,people,combined,f'{target}/{name}stationNumbers.csv')
 	CSVForTimeLimits(schedule,people,combined,f'{target}/{name}timeLimits.csv')
-	genScorecards(schedule,target,stages)
+	genScorecards(schedule,target,stations,stages,differentColours)
 	if postToWCIF:
 		confirm = input(f"{id}, Confirm you want to post with 1")
 		updateScrambleCount(data,schedule)
@@ -1939,24 +1997,25 @@ def callAll(id,stations,stages,postToWCIF,mixed,fixed,customGroups,combined,just
 			postWcif(id,data,header)
 
 def main():
-	postToWCIF = True # Should be False when playing
+	postToWCIF = TRUE # Should be False when playing
 	# fil = open(f"{path}/wcif.json")
-	id = 'RoskildeforAlle2022'
+	id = 'OdsherredJulehygge2022'
 
 	fixed = False # Bool, fixed judges 
 	# fixed = True
 	# mixed = {'333':True,'pyram':True} # Event -> Bool. True meaning seated judges and runners
 	mixed = {}
-	stations = 20
+	stations = 24
 	# stages = None
-	stages = 2 # Equally sized
+	stages = 2 # Equally sized, should really be divisible by stations, otherwise some people will be placed on the same station
+	differentColours = False # Only set this to true if the stages above is set to more than 1
 	combined = None
 	# combined = combineEvents('666','777')
 	just1GroupofBigBLD = True
 	# customGroups={'333bf':3,'sq1':4,'333mbf1':1}
 	customGroups = {} # event -> number
 
-	callAll(id,stations,stages,postToWCIF,mixed,fixed,customGroups,combined,just1GroupofBigBLD)
+	callAll(id,stations,stages,differentColours,postToWCIF,mixed,fixed,customGroups,combined,just1GroupofBigBLD)
 
 
 main()
