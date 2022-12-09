@@ -8,64 +8,57 @@ solvedC = 247132686368
 solvedE = 407901468851537952
 
 def swap5(k, pos1, pos2):
-	set1 =  (k >> pos1) & 31
-	set2 =  (k >> pos2) & 31
-	xor = (set1 ^ set2)
-	xor = (xor << pos1) | (xor << pos2)
-	return k ^ xor
+    set1 =  (k >> pos1) & 31
+    set2 =  (k >> pos2) & 31
+    xor = (set1 ^ set2)
+    xor = (xor << pos1) | (xor << pos2)
+    return k ^ xor
 
-def swap1(k, pos1, pos2):
-	set1 =  (k >> pos1) & 1
-	set2 =  (k >> pos2) & 1
-	xor = (set1 ^ set2)
-	xor = (xor << pos1) | (xor << pos2)
-	return k ^ xor
+def twistCorner(k):
+    u = k & 24
+    o = (u+8+((u&16)>>1))&24
+    return o + (k&7)
 
-def flipE(k,pos1,pos2,pos3,pos4):
-    k ^= (1 << pos1 | 1 << pos2 | 1 << pos3 | 1 << pos4)
-    return k
+def twistCornerC(k):
+    u = k & 24
+    t = u + 24
+    o = (t - ((t & 16)>>1)) & 24
+    return o + (k&7)
 
-def twistCornerC(k,pos1):
-    u = k >> pos1
-    c = u & 3
-    t = c + 3
-    c = (t - ((t & 2)>>1)) & 3
-    suffix = k & ((2**(pos1)) -1) 
-    n = ((((u >> 2) << 2) + c) << (pos1)) + suffix
-    return n
-
-def twistCorner(k,pos1):
-    u = k >> pos1
-    c = u & 3
-    c = (c + 1 + ((c & 2)>>1)) & 3
-    suffix = k & ((2**(pos1)) -1) 
-    n = ((((u >> 2) << 2) + c) << (pos1)) + suffix
-    return n
-
+# @profile
 def R(c,e):
-    # Corners
-    c =  swap5(swap5(swap5(c,10,20),0,30),10,30)
-    c =  twistCornerC(c,3)
-    c =  twistCorner(c,13)
-    c =  twistCornerC(c,23)
-    c =  twistCorner(c,33)
 
-    # Edges
-    e = swap5(swap5(swap5(e,10,30),25,50),10,50)
-    # Edge flipping not needed
+    block1 = twistCornerC((c >> 10) & 31)
+    block2 = twistCorner((c >> 20) & 31)
+    block3 = twistCornerC((c >> 30) & 31)
+    block4 = twistCorner((c) & 31)
+    c = c & 35151053554656
+    c = c ^ ((block1 << 20) | (block2 << 30) |(block3) |(block4 << 10))
+
+    block1 = (e >> 10) & 31
+    block2 = (e >> 25) & 31
+    block3 = (e >> 30) & 31
+    block4 = (e >> 50) & 31
+    e = e & 1118018573168509951
+    e = e ^ ((block1 << 30) | (block2 << 10) |(block3 << 50) |(block4 << 25))
+
     return c,e
 
 def Rp(c,e):
     # Corners
-    c =  swap5(swap5(swap5(c,10,20),0,30),20,0)
-    c =  twistCornerC(c,3)
-    c =  twistCorner(c,13)
-    c =  twistCornerC(c,23)
-    c =  twistCorner(c,33)
+    block1 = twistCornerC((c >> 10) & 31)
+    block2 = twistCorner((c >> 20) & 31)
+    block3 = twistCornerC((c >> 30) & 31)
+    block4 = twistCorner((c) & 31)
+    c = c & 35151053554656
+    c = c ^ ((block1) | (block2 << 10) |(block3 << 20) |(block4 << 30))
 
-    # Edges
-    e = swap5(swap5(swap5(e,10,30),25,50),30,25)
-    # Edge flipping not needed
+    block1 = (e >> 10) & 31
+    block2 = (e >> 25) & 31
+    block3 = (e >> 30) & 31
+    block4 = (e >> 50) & 31
+    e = e & 1118018573168509951
+    e = e ^ ((block1 << 25) | (block2 << 50) |(block3 << 10) |(block4 << 30))
     return c,e
 
 def R2(c,e):
@@ -79,17 +72,38 @@ def R2(c,e):
     return c,e
 
 def U(c,e):
-    c =  swap5(swap5(swap5(c,20,25),30,35),20,35)
-    # Corner twisting not needed
-    e =  swap5(swap5(swap5(e,40,45),55,50),40,55)
-    # Edge flipping not needed
+
+    block1 = (c >> 20) & 31
+    block2 = (c >> 25) & 31
+    block3 = (c >> 30) & 31
+    block4 = (c >> 35) & 31
+
+    c = c & 34084861509631
+    c = c ^ ((block1 << 25) | (block2 << 35) |(block3 << 20 ) |(block4 << 30))
+
+    block1 = (e >> 40) & 31
+    block2 = (e >> 45) & 31
+    block3 = (e >> 50) & 31
+    block4 = (e >> 55) & 31
+    e = e & 1099511627775
+    e = e ^ ((block1 << 45) | (block2 << 55) |(block3 << 40) |(block4 << 50))
     return c,e
 
 def Up(c,e):
-    c =  swap5(swap5(swap5(c,20,25),30,35),25,30)
-    # Corner twisting not needed
-    e =  swap5(swap5(swap5(e,40,45),55,50),45,50)
-    # Edge flipping not needed
+    block1 = (c >> 20) & 31
+    block2 = (c >> 25) & 31
+    block3 = (c >> 30) & 31
+    block4 = (c >> 35) & 31
+
+    c = c & 34084861509631
+    c = c ^ ((block1 << 30) | (block2 << 20) |(block3 << 35 ) |(block4 << 25))
+
+    block1 = (e >> 40) & 31
+    block2 = (e >> 45) & 31
+    block3 = (e >> 50) & 31
+    block4 = (e >> 55) & 31
+    e = e & 1099511627775
+    e = e ^ ((block1 << 50) | (block2 << 40) |(block3 << 55) |(block4 << 45))
     return c,e
 
 def U2(c,e):
@@ -100,17 +114,38 @@ def U2(c,e):
     return c,e
 
 def D(c,e):
-    c =  swap5(swap5(swap5(c,0,5),10,15),0,15)
-    # Corner twisting not needed
-    e =  swap5(swap5(swap5(e,0,5),10,15),0,15)
-    # Edge flipping not needed
+
+    block1 = (c) & 31
+    block2 = (c >> 5) & 31
+    block3 = (c >> 10) & 31
+    block4 = (c >> 15) & 31
+
+    c = c & 35184371040256
+    c = c ^ ((block1 << 5) | (block2 << 15) |(block3) |(block4 << 10))
+
+    block1 = (e) & 31
+    block2 = (e >> 5) & 31
+    block3 = (e >> 10) & 31
+    block4 = (e >> 15) & 31
+    e = e & 1152921504605798400
+    e = e ^ ((block1 << 5) | (block2 << 15) |(block3) |(block4 << 10))
     return c,e
 
 def Dp(c,e):
-    c =  swap5(swap5(swap5(c,0,5),10,15),5,10)
-    # Corner twisting not needed
-    e =  swap5(swap5(swap5(e,0,5),10,15),5,10)
-    # Edge flipping not needed
+    block1 = (c) & 31
+    block2 = (c >> 5) & 31
+    block3 = (c >> 10) & 31
+    block4 = (c >> 15) & 31
+
+    c = c & 35184371040256
+    c = c ^ ((block1 << 10) | (block2) |(block3 << 15) |(block4 << 5))
+
+    block1 = (e) & 31
+    block2 = (e >> 5) & 31
+    block3 = (e >> 10) & 31
+    block4 = (e >> 15) & 31
+    e = e & 1152921504605798400
+    e = e ^ ((block1 << 10) | (block2) |(block3 << 15) |(block4 << 5))
     return c,e
 
 def D2(c,e):
@@ -122,28 +157,38 @@ def D2(c,e):
 
 def F(c,e):
     # Corners
-    c =  swap5(swap5(swap5(c,10,15),25,20),10,25)
-    c =  twistCorner(c,23)
-    c =  twistCornerC(c,13)
-    c =  twistCorner(c,18)
-    c =  twistCornerC(c,28)
 
-    # Edges
-    e = swap5(swap5(swap5(e,15,35),30,40),40,15)
-    e = flipE(e,19,34,39,44)
+    block1 = twistCorner((c >> 10) & 31)
+    block2 = twistCornerC((c >> 15) & 31)
+    block3 = twistCornerC((c >> 20) & 31)
+    block4 = twistCorner((c >> 25) & 31)
+    c = c & 35183298348031
+    c = c ^ ((block1 << 15) | (block2 << 25) |(block3 << 10) |(block4 << 20))
+
+    block1 = ((e >> 15) & 31)^16
+    block2 = ((e >> 30) & 31) ^16
+    block3 = ((e >> 35) & 31) ^16
+    block4 = ((e >> 40) & 31) ^16
+    e = e & 1152886321307484159
+    e = e ^ ((block1 << 35) | (block2 << 15) |(block3 << 40) |(block4 << 30))
+
     return c,e
 
 def Fp(c,e):
     # Corners
-    c =  swap5(swap5(swap5(c,10,15),25,20),15,20)
-    c =  twistCorner(c,23)
-    c =  twistCornerC(c,13)
-    c =  twistCorner(c,18)
-    c =  twistCornerC(c,28)
+    block1 = twistCorner((c >> 10) & 31)
+    block2 = twistCornerC((c >> 15) & 31)
+    block3 = twistCornerC((c >> 20) & 31)
+    block4 = twistCorner((c >> 25) & 31)
+    c = c & 35183298348031
+    c = c ^ ((block1 << 20) | (block2 << 10) |(block3 << 25) |(block4 << 15))
 
-    # Edges
-    e = swap5(swap5(swap5(e,15,35),30,40),30,35)
-    e = flipE(e,19,34,39,44)
+    block1 = ((e >> 15) & 31)^16
+    block2 = ((e >> 30) & 31) ^16
+    block3 = ((e >> 35) & 31) ^16
+    block4 = ((e >> 40) & 31) ^16
+    e = e & 1152886321307484159
+    e = e ^ ((block1 << 30) | (block2 << 40) |(block3 << 15) |(block4 << 35))
     return c,e
 
 def F2(c,e):
@@ -155,29 +200,38 @@ def F2(c,e):
     return c,e
 
 def L(c,e):
-    # Corners
-    c =  swap5(swap5(swap5(c,35,25),15,5),15,35)
-    c =  twistCorner(c,8)
-    c =  twistCornerC(c,18)
-    c =  twistCorner(c,28)
-    c =  twistCornerC(c,38)
-    # Edges
+    block1 = twistCornerC((c >> 5) & 31)
+    block2 = twistCorner((c >> 15) & 31)
+    block3 = twistCornerC((c >> 25) & 31)
+    block4 = twistCorner((c >>35) & 31)
+    c = c & 34118178995231
+    c = c ^ ((block1 << 35) | (block2 << 5) |(block3 << 15) |(block4 << 25))
 
-    e = swap5(swap5(swap5(e,35,5),45,20),35,20)
-    # no edge flips
+    block1 = (e >> 5) & 31
+    block2 = (e >> 20) & 31
+    block3 = (e >> 35) & 31
+    block4 = (e >> 45) & 31
+    e = e & 1151829723887696927
+    e = e ^ ((block1 << 20) | (block2 << 45) |(block3 << 5) |(block4 << 35))
+
     return c,e
 
-def Lp(c,e):
-    # Corners
-    c =  swap5(swap5(swap5(c,35,25),15,5),5,25)
-    c =  twistCorner(c,8)
-    c =  twistCornerC(c,18)
-    c =  twistCorner(c,28)
-    c =  twistCornerC(c,38)
-    # Edges
 
-    e = swap5(swap5(swap5(e,35,5),45,20),5,45)
-    # no edge flips
+def Lp(c,e):
+    block1 = twistCornerC((c >> 5) & 31)
+    block2 = twistCorner((c >> 15) & 31)
+    block3 = twistCornerC((c >> 25) & 31)
+    block4 = twistCorner((c >>35) & 31)
+    c = c & 34118178995231
+    c = c ^ ((block1 << 15) | (block2 << 25) |(block3 << 35) |(block4 << 5))
+
+    block1 = (e >> 5) & 31
+    block2 = (e >> 20) & 31
+    block3 = (e >> 35) & 31
+    block4 = (e >> 45) & 31
+    e = e & 1151829723887696927
+    e = e ^ ((block1 << 35) | (block2 << 5) |(block3 << 45) |(block4 << 20))
+
     return c,e
 
 def L2(c,e):
@@ -191,28 +245,35 @@ def L2(c,e):
 
 def B(c,e):
     # Corners
-    c =  swap5(swap5(swap5(c,35,30),0,5),30,5)
-    c =  twistCornerC(c,8)
-    c =  twistCorner(c,3)
-    c =  twistCornerC(c,33)
-    c =  twistCorner(c,38)
-    # Edges
+    block1 = twistCornerC((c) & 31)
+    block2 = twistCorner((c >> 5) & 31)
+    block3 = twistCorner((c >> 30) & 31)
+    block4 = twistCornerC((c >> 35) & 31)
+    c = c & 34085934201856
+    c = c ^ ((block1 << 30) | (block2) |(block3 << 35) |(block4 << 5))
 
-    e = swap5(swap5(swap5(e,25,55),0,20),25,20)
-    e = flipE(e,4,24,29,59)
+    block1 = ((e) & 31)^16
+    block2 = ((e >> 20) & 31) ^16
+    block3 = ((e >> 25) & 31) ^16
+    block4 = ((e >> 55) & 31) ^16
+    e = e & 36028795946270688
+    e = e ^ ((block1 << 25) | (block2) |(block3 << 55) |(block4 << 20))
     return c,e
 
 def Bp(c,e):
-    # Corners
-    c =  swap5(swap5(swap5(c,35,30),0,5),35,0)
-    c =  twistCornerC(c,8)
-    c =  twistCorner(c,3)
-    c =  twistCornerC(c,33)
-    c =  twistCorner(c,38)
-    # Edges
+    block1 = twistCornerC((c) & 31)
+    block2 = twistCorner((c >> 5) & 31)
+    block3 = twistCorner((c >> 30) & 31)
+    block4 = twistCornerC((c >> 35) & 31)
+    c = c & 34085934201856
+    c = c ^ ((block1 << 5) | (block2 << 35) |(block3 ) |(block4 << 30))
 
-    e = swap5(swap5(swap5(e,25,55),0,20),55,0)
-    e = flipE(e,4,24,29,59)
+    block1 = ((e) & 31)^16
+    block2 = ((e >> 20) & 31) ^16
+    block3 = ((e >> 25) & 31) ^16
+    block4 = ((e >> 55) & 31) ^16
+    e = e & 36028795946270688
+    e = e ^ ((block1 << 20) | (block2 << 55) |(block3) |(block4 << 25))
     return c,e
 
 def B2(c,e):
@@ -225,6 +286,7 @@ def B2(c,e):
     return c,e
 
 def printbin(c,e):
+    print("printbin")
     ie = []
     ic = []
     cp = format(c,'b')
@@ -337,17 +399,20 @@ def notFakeHTR(c,e):
                 q.append((_c,_e,l+[move]))
     return False
 
+# @profile
 def solveEO(c,e):
     if not checkEO(e):
         return []
     else:
         moves = ["R","R'","R2","U","U'","U2","F","F'","F2","D","D2","D'","L","L2","L'","B","B2","B'"]
+        # moves = [R,Rp,R2,U,Up,U2,F,Fp,F2,D,Dp,D2,L,Lp,L2,B,Bp,B2]
         q = deque([(c,e,[])])
         visited = set()
         while q:
             c,e,l = q.popleft()
             for move in moves:
                 _c,_e= mdic[move](c,e)
+                # _c,_e = move(c,e)
                 eoState = checkEO(_e)
                 if not eoState:
                     return l+[move]
@@ -551,13 +616,17 @@ def solveFromDRFast(c,e,given=False):
                         q.append((_c,_e,l+[move]))
                         visited.add((_c,_e))
 
-def EOToDR(c,e,oScramble,eoSol,given=False):
+def EOToDR(c,e,oScramble,eoSol,*,partialStep=False,given=False):
     e = 532021248000 
     c = 248276819175
     for move in oScramble: # Re do the corners and edges in a state where A) it can be checked faster
         c,e = mdic[move](c,e)
     for move in eoSol: # And B) where the equivalent state for this step is not checked multiple times
         c,e = mdic[move](c,e)
+
+    if partialStep:
+        for move in partialStep: # Done if you want to make a step before to make it more human findable
+            c,e = mdic[move](c,e)
 
     if not given:
         if os.path.exists('fromEOToDRPrune.pickle'):
@@ -590,19 +659,96 @@ def EOToDR(c,e,oScramble,eoSol,given=False):
                     q.append((_c,_e,l+[move]))
                     visited.add((_c,_e))
 
+def Human1DR(c,e,oScramble,eoSol):
+    e = 532021248000 
+    c = 248276819175
+    for move in oScramble: # Re do the corners and edges in a state where A) it can be checked faster
+        c,e = mdic[move](c,e)
+    for move in eoSol: # And B) where the equivalent state for this step is not checked multiple times
+        c,e = mdic[move](c,e)
+
+    if checkHuman1DR(c,e):
+        return []
+    moves = ["R","R'","R2","U","U'","U2","F2","B2","D","D2","D'","L","L2","L'"]
+    q = deque([(c,e,[])])
+    visited = set()
+    cc = 0
+    while q:
+        # cc+=1
+        # print(cc)
+        c,e,l = q.popleft()
+        for move in moves:
+            _c,_e= mdic[move](c,e)
+            if checkHuman1DR(_c,_e):
+                return  l+[move]
+            else:
+                if (_c,_e) not in visited:
+                    q.append((_c,_e,l+[move]))
+                    visited.add((_c,_e))
+
+def checkHuman1DR(c,e):
+    # poss = [3, 8, 13,18,23,28,33,38]
+    # k = 0
+    # for pos in poss:
+    #     k |= 3 << pos
+    co = cornersHuman1Dr(c)
+    eo = edgesHuman1DR(e)
+    if (co == 4 and eo in {2,4}) or (co == 3 and eo == 3):
+        return True
+    else:
+        return False
+
+def cornersHuman1Dr(c):
+    o = 0
+    for i in range(3,40,5):
+        if (c >> i) & 3 > 0:
+            continue
+        o += 1
+    return o
+
+def edgesHuman1DR(e):
+    o = 0
+    for i in range(20,39,5):
+        if (e >> i) & 15 == 15:
+            continue
+        o += 1
+    return o
+
 # printbin(startc,starte)
 
 # startc,starte = R(startc,starte)
 # print(checkDR(startc,starte))
 
-# scramble = "D B D' L2 F2 L2 F2 U' F2 U' L2 B2 U F2 L B' D' R2 D2 F' D".split(' ')
-scramble = "B2 R2 U2 B D2 B D2 R2 D2 R2 F' U2 R F2 D B U B U2 F U2".split(' ')
+scramble = "U R2 F B R B2 R U2 L B2 R U' D' R2 F R' L B2 U2 F2".split(' ')
+# scramble = "F R D2 U2 R D2 R2 F2 L' U2 R' D2 B' R2 F R2 F' D' U2".split(' ')
 mdic = {"R":R,"R'":Rp,"R2'":R2,"R2":R2,"U":U,"U'":Up,"U2":U2,"D":D,"D'":Dp,"D2":D2,"F":F,"F'":Fp,"F2":F2,"U2'":U2,"B":B,"B'":Bp,"B2":B2,"L":L,"L2":L2,"L'":Lp}
 
-# for i in range(1000000):
-# for move in scramble:
-#     startc,starte = mdic[move](startc,starte)
+starte = 407901468851537952
+startc = 247132686368
 
+# printbin(startc,starte)
+
+# startc,starte = mdic["B'"](startc,starte)
+
+# for i in range(10_000_000):
+for move in scramble:
+    startc,starte = mdic[move](startc,starte)
+    # print(move,startc,starte)
+
+# from line_profiler import LineProfiler
+# lp = LineProfiler()
+# lp_wrapper = lp(solveEO)
+# lp_wrapper([(startc,starte)])
+for i in range(100):
+    j = solveEO(startc,starte)
+# print(j)
+# lp_wrapper.print_stats()
+#             # print(startc,starte,move)
+# print(startc,starte)
+# printbin(startc,starte)
+# for i in range(1000):
+#     oos = solveEO(startc,starte)
+# print(oos)
 # print(checkDR(startc,starte))
 # print(checkEO(starte))
 
@@ -765,7 +911,7 @@ def solveScrambleFast(scramble):
     
 
 def solveScrambleAllDRAxis(scramble):
-    print(scramble)
+    print("Scramble:",scramble)
     scramble = scramble.split(' ')
     scrambleList,reversing = rotatedScrambles(scramble)
     # Prune to finish cube
@@ -794,7 +940,8 @@ def solveScrambleAllDRAxis(scramble):
         startc = 247132686368
         for move in scramble:
             startc,starte = mdic[move](startc,starte)
-
+        # print(startc,starte)
+        # printbin(startc,starte)
         eoSol = solveEO(startc,starte)
         print("EO:",end='\t')
         eoSolPrint = doReverseRotate(eoSol,rev)
@@ -803,7 +950,7 @@ def solveScrambleAllDRAxis(scramble):
         for move in eoSol:
             startc,starte = mdic[move](startc,starte)
         print(f'\t{len(eoSol)}')
-        drSol = EOToDR(startc,starte,scramble,eoSol,fromEOToDRPrune)
+        drSol = EOToDR(startc,starte,scramble,eoSol,given=fromEOToDRPrune)
         drSolPrint = doReverseRotate(drSol,rev)
 
         print("DR:",end='\t')
@@ -813,7 +960,76 @@ def solveScrambleAllDRAxis(scramble):
             startc,starte = mdic[move](startc,starte)
         print(f'\t{len(drSolPrint)}')
         
-        finalSol = solveFromDRFast(startc,starte,fromDRPrune)
+        finalSol = solveFromDRFast(startc,starte,given=fromDRPrune)
+        finalSolPrint = doReverseRotate(finalSol,rev)
+        print("Finish:", end='\t')
+        for move in finalSolPrint:
+            print(move,end=' ')
+        print(f'\t{len(finalSolPrint)}')
+        print(f"Solution length:\t{len(eoSol)+len(drSol)+len(finalSol)}\n")
+
+
+def solveScrambleAllDRAxisExtraDRStep(scramble):
+    print("Scramble:",scramble)
+    scramble = scramble.split(' ')
+    scrambleList,reversing = rotatedScrambles(scramble)
+    # Prune to finish cube
+    if os.path.exists('fromDRPrune.pickle'):
+        with open('fromDRPrune.pickle','rb') as f:
+            fromDRPrune = pickle.load(f)
+    else:
+        print('first time, genning prune table to finish the cube. Should take like 5 sec with pypy')
+        fromDRPrune =getFromDRPrune()
+        with open('fromDRPrune.pickle','wb') as f:
+            pickle.dump(fromDRPrune,f)
+
+    # Prune to fast DR
+    if os.path.exists('fromEOToDRPrune.pickle'):
+        with open('fromEOToDRPrune.pickle','rb') as f:
+            fromEOToDRPrune = pickle.load(f)
+    else:
+        print('first time, genning prune table to get EO -> DR. Should take like 5 sec with pypy')
+        fromEOToDRPrune =getFromEOToDRPrune()
+        with open('fromEOToDRPrune.pickle','wb') as f:
+            pickle.dump(fromEOToDRPrune,f)
+    
+    for scramble,rev in zip(scrambleList,reversing):
+        print(f"Solving for axis {rev}")
+        starte = 407901468851537952
+        startc = 247132686368
+        for move in scramble:
+            startc,starte = mdic[move](startc,starte)
+        
+        eoSol = solveEO(startc,starte)
+        print("EO:",end='\t')
+        eoSolPrint = doReverseRotate(eoSol,rev)
+        for move in eoSolPrint:
+            print(move,end=' ')
+        for move in eoSol:
+            startc,starte = mdic[move](startc,starte)
+        print(f'\t{len(eoSol)}')
+
+        human1drSol = Human1DR(startc,starte,scramble,eoSol)
+        human1drSolPrint = doReverseRotate(human1drSol,rev)
+
+        print("DR substep:",end='\t')
+        for move in human1drSolPrint:
+            print(move,end=' ')
+        for move in human1drSol:
+            startc,starte = mdic[move](startc,starte)
+        print(f'\t{len(human1drSolPrint)}')
+
+        drSol = EOToDR(startc,starte,scramble,eoSol,human1drSol,given=fromEOToDRPrune)
+        drSolPrint = doReverseRotate(drSol,rev)
+
+        print("DR:",end='\t')
+        for move in drSolPrint:
+            print(move,end=' ')
+        for move in drSol:
+            startc,starte = mdic[move](startc,starte)
+        print(f'\t{len(drSolPrint)}')
+        
+        finalSol = solveFromDRFast(startc,starte,given=fromDRPrune)
         finalSolPrint = doReverseRotate(finalSol,rev)
         print("Finish:", end='\t')
         for move in finalSolPrint:
@@ -826,9 +1042,20 @@ sloww = "F2 L D2 L' F2 L' F2 D2 R2 B2 D2 R B' U' F2 L R2 B R2 F2 R2"
 # for i in range(1_000_000_000):
 #     startc,starte = U(startc,starte)
 
+# for i in range(1_000_000_000):
+#     startc = twistCorner(startc,9)
+
 # solveScramble("B U2 B D2 L2 D2 F2 U2 F' D2 R2 U' R' U' L' D' B2 F R B D'")
 # solveScrambleFast("R2 F U2 L2 B' F' R2 F' L2 F2 D2 U' R' D2 L' D' R' B2 F U2")
 # solveScrambleFast("R2 U L2 U2 L2 U' L2 R2 D F2 U L2 R' B2 D' R' U L' F' L B'")
 # getFromEOToDRPrune()
 
-solveScrambleAllDRAxis("U2 R2 D' U2 R2 B2 D' U2 B2 L2 F2 L D U2 L2 R' B D' F' R2 D2")
+# solveScrambleAllDRAxis("B' R2 U' F' R L2 F2 L2 U2 F' U2 B L2 D2 L2 F D R B D2 R' D B2 D' L")
+
+
+
+# for i in range(1000000000):
+#     startc = twistCorner(startc,18)
+# print(startc)
+# solveScrambleAllDRAxisExtraDRStep("D' B2 F2 D2 R2 D' F2 U' L2 D F2 U R' B' U2 R B' D' R' B D")
+# solveScrambleAllDRAxisExtraDRStep("B' R2 U' F' R L2 F2 L2 U2 F' U2 B L2 D2 L2 F D R B D2 R' D B2 D' L")
