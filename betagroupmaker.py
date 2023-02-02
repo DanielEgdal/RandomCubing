@@ -163,6 +163,7 @@ class Schedule():
 		self.sideStageEvents = set()
 		self.maxAmountGroups = 0
 		self.childActivityMapping = {} # Event -> group -> ID
+		self.combinedEvents = None
 
 	def order(self): # ordering events in schedule
 		self.events.sort(key=lambda x:x[1]) 
@@ -289,6 +290,7 @@ def scheduleBasicInfo(data,personInfo,organizers,delegates,stations,fixed,custom
 	if combinedEvents==None:
 		combinedEvents = ('k','k')
 	schedule = Schedule()
+	schedule.combinedEvents = combinedEvents
 	schedule.amountStations = stations
 	schedule.name = data['id']
 	schedule.longName = data['name']
@@ -1565,22 +1567,27 @@ def getRegList(personInfo,outfile):
 	pdf.add_page()
 	pdf.add_font('DejaVu','', fname='fonts/DejaVuSansCondensed.ttf', uni=True)
 	pdf.set_font('DejaVu','',8)
+	pdf.cell(65,6,f'Indtjekning: Deltagere som ikke er nye er der intet specielt ved, bare sæt flueben ved dem når de ankommer.',ln=True)
+	pdf.cell(65,6,f'Nye deltagere er der hvor du skal fokusere. Bed om ID (hvor man kan se nationalitet), og tjek at alt information passer.',ln=True)
+	pdf.cell(65,6,f'Hvis personen er dansk statsborger eller bor i DK, skal du spørge dem om de vil være medlem af DSF (gratis), og om deres postnummer.',ln=True)
+	pdf.cell(65,6,f'Postnummer er valgfrit og skal kun bruges hvis de vil være medlem af DSF.',ln=True)
 	line_height = pdf.font_size *3
 	col_width = pdf.epw / 9
 	personlist = [val for val in personInfo.values()]
 	personlist.sort(key=lambda x:x.name)
 	for person in personlist:
-		pdf.multi_cell(10,line_height,' ',border=1, ln=3)
+		pdf.multi_cell(8,line_height,' ',border=1, ln=3)
 		pdf.multi_cell(60,line_height,person.name,border=1, ln=3)
 		if person.wcaId:
 			pdf.multi_cell(col_width,line_height,person.wcaId,border=1, ln=3)
 		else:
 			pdf.multi_cell(col_width,line_height,'newcomer',border=1, ln=3)
-			pdf.multi_cell(10,line_height,person.citizenship,border=1, ln=3)
-			pdf.multi_cell(6,line_height,person.gender,border=1, ln=3)
-			pdf.multi_cell(col_width,line_height,person.dob,border=1, ln=3)
+			pdf.multi_cell(8,line_height,person.citizenship,border=1, ln=3)
+			pdf.multi_cell(5,line_height,person.gender,border=1, ln=3)
+			pdf.multi_cell(18,line_height,person.dob,border=1, ln=3)
 			pdf.multi_cell(col_width,line_height,'DSF medlem?',border=1, ln=3)
-			pdf.multi_cell(10,line_height,' ',border=1, ln=3)
+			pdf.multi_cell(8,line_height,' ',border=1, ln=3)
+			pdf.multi_cell(40,line_height,'Postnummer:     ',border=1, ln=3)
 		pdf.ln(line_height)
 	pdf.output(outfile)
 
@@ -1810,7 +1817,10 @@ def updateScrambleCount(data,scheduleInfo):
 	for idx,event in enumerate(data['events']): 
 		if event['id'] in ['333fm','333mbf']:
 			continue
-		scrambleSetCount = len(scheduleInfo.groups[event['id']])
+		if event['id'] in scheduleInfo.combinedEvents:
+			scrambleSetCount = len(scheduleInfo.groups["-".join(scheduleInfo.combinedEvents)])
+		else:
+			scrambleSetCount = len(scheduleInfo.groups[event['id']])
 		data['events'][idx]['rounds'][0]['scrambleSetCount'] = scrambleSetCount
 		for rid,round in enumerate(event['rounds']): # Subsequent rounds
 			roundNumber = round['id'].split('-')[1][1:]
@@ -1847,29 +1857,33 @@ def createChildActivityWCIF(data,scheduleInfo):
 		for rid,room in enumerate(venue['rooms']):
 			for aid,activity in enumerate(room['activities']):
 				eventSplit = activity['activityCode'].split('-')
-				if ((eventSplit[1][-1] == '1' and len(eventSplit) == 2) and eventSplit[0] in scheduleInfo.groupTimes) or len(eventSplit) > 2:
+				if ((eventSplit[1][-1] == '1' and len(eventSplit) == 2) and eventSplit[0] in scheduleInfo.groupTimes) or len(eventSplit) > 2 or (eventSplit[0] in scheduleInfo.combinedEvents and eventSplit[1][-1] == '1'):
 					if eventSplit[0] == '333mbf':
 						eventSplit[0] = f'333mbf{eventSplit[2][-1]}'
 						# print(eventSplit) 
+					if eventSplit[0] in scheduleInfo.combinedEvents:
+						eventt = "-".join(scheduleInfo.combinedEvents)
+					else:
+						eventt = eventSplit[0]
 					scheduleInfo.childActivityMapping[eventSplit[0]] = {}
 					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'].append(deepcopy(extensionTemplate))
-					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['groups'] = len(scheduleInfo.groupTimes[eventSplit[0]])
-					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['scramblers'] = len(scheduleInfo.groupScramblers[eventSplit[0]][1])
-					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['runners'] = len(scheduleInfo.groupRunners[eventSplit[0]][1])
-					for gid,groupNum in enumerate(scheduleInfo.groupTimes[eventSplit[0]]):
+					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['groups'] = len(scheduleInfo.groupTimes[eventt])
+					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['scramblers'] = len(scheduleInfo.groupScramblers[eventt][1])
+					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['runners'] = len(scheduleInfo.groupRunners[eventt][1])
+					for gid,groupNum in enumerate(scheduleInfo.groupTimes[eventt]):
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'].append(deepcopy(childTemplate))
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['id'] = childIdCounter
 						scheduleInfo.childActivityMapping[eventSplit[0]][groupNum] =childIdCounter
 						childIdCounter += 1
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['name'] = f"{data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['name']}, Round 1 Group {groupNum}"
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['activityCode'] = f"{data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['activityCode']}-g{groupNum}"
-						startTime = str(scheduleInfo.groupTimes[eventSplit[0]][groupNum][0].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
-						endTime = str(scheduleInfo.groupTimes[eventSplit[0]][groupNum][1].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
+						startTime = str(scheduleInfo.groupTimes[eventt][groupNum][0].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
+						endTime = str(scheduleInfo.groupTimes[eventt][groupNum][1].tz_convert(pytz.utc).to_datetime64()).split('.')[0]+'Z'
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['startTime'] = startTime
 						data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'][gid]['endTime'] = endTime
-				elif eventSplit[0]+eventSplit[1][-1] in scheduleInfo.subSeqGroupCount: # subsequent round extension for groupifier
-					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'].append(deepcopy(extensionTemplate))
-					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['groups'] = scheduleInfo.subSeqGroupCount[eventSplit[0]+eventSplit[1][-1]]
+				# elif eventSplit[0]+eventSplit[1][-1] in scheduleInfo.subSeqGroupCount: # subsequent round extension for groupifier
+				# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'].append(deepcopy(extensionTemplate))
+				# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'][0]['data']['groups'] = scheduleInfo.subSeqGroupCount[eventSplit[0]+eventSplit[1][-1]]
 					# for groupNum in range(1,scheduleInfo.subSeqGroupCount[eventSplit[0]+eventSplit[1][-1]]+1):
 					# 	data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'].append(deepcopy(childTemplate))
 						
@@ -1900,12 +1914,22 @@ def enterPersonActivitiesWCIF(data,personInfo,scheduleInfo):
 		if type(person['registration']) == dict:
 			if person['registration']['status'] == 'accepted':
 				for event in personInfo[person['name']].groups:
+					# if event in scheduleInfo.combinedEvents:
+					# 	eventt = "-".join(scheduleInfo.combinedEvents)
+					# else:
+					# 	eventt = event
+					# print(eventt)
+					# print(scheduleInfo.childActivityMapping.keys())
 					data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
 					data['persons'][pid]['assignments'][depth]['activityId'] = scheduleInfo.childActivityMapping[event][personInfo[person['name']].groups[event]]
 					data['persons'][pid]['assignments'][depth]['stationNumber'] = personInfo[person['name']].stationNumbers[event]
 					depth+=1
 
 				for event in personInfo[person['name']].assignments:
+					# if event in scheduleInfo.combinedEvents:
+					# 	eventt = "-".join(scheduleInfo.combinedEvents)
+					# else:
+					# 	eventt = event
 					for assignment in personInfo[person['name']].assignments[event]:
 						data['persons'][pid]['assignments'].append(deepcopy(assignmentTemplate))
 						if type(assignment) == int:
@@ -2015,18 +2039,18 @@ def callAll(id,stations,stages,differentColours,postToWCIF,mixed,fixed,customGro
 def main():
 	postToWCIF = True # Should be False when playing
 	# fil = open(f"{path}/wcif.json")
-	id = 'IkastWinterCubing2023'
+	id = 'DSFGeneralforsamlingen2023'
 
 	fixed = False # Bool, fixed judges 
 	# fixed = True
 	# mixed = {'333':True,'pyram':True} # Event -> Bool. True meaning seated judges and runners
 	mixed = {}
-	stations = 24
+	stations = 20
 	stages = None
 	# stages = 2 # Equally sized, should really be divisible by stations, otherwise some people will be placed on the same station
 	differentColours = False # Only set this to true if the stages above is set to more than 1
 	combined = None
-	# combined = combineEvents('666','777')
+	combined = combineEvents('666','777')
 	just1GroupofBigBLD = True
 	# customGroups={'333bf':3,'sq1':4,'333mbf1':1}
 	customGroups = {} # event -> number
@@ -2034,4 +2058,79 @@ def main():
 	callAll(id,stations,stages,differentColours,postToWCIF,mixed,fixed,customGroups,combined,just1GroupofBigBLD)
 
 
+def deleteR2AnkerCleanup():
+	id = 'HDCIIIRisbjerggaard2023'
+	response,header = getWcif(id)
+	data = json.loads(response.content)
+	for pid,person in enumerate(data['persons']):
+		if type(person['registration']) == dict:
+			if person['registration']['status'] == 'accepted':
+				temp = []
+				for assignment in data['persons'][pid]['assignments']:
+					if assignment['activityId'] < 200:
+						temp.append(assignment)
+				data['persons'][pid]['assignments'] = deepcopy(temp)
+	for vid, venue in enumerate(data['schedule']['venues']):
+		for rid,room in enumerate(venue['rooms']):
+			for aid,activity in enumerate(room['activities']):
+				eventSplit = activity['activityCode'].split('-')
+				if (eventSplit[1][-1] == '2' and eventSplit[0] != '333') or (eventSplit[1][-1] == '3' and eventSplit[0] == '333'):
+					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['childActivities'] = []
+					data['schedule']['venues'][vid]['rooms'][rid]['activities'][aid]['extensions'] = []
+	postWcif(id,data,header)
+
+def hdcfilegroups():
+	id = 'HDCIIIRisbjerggaard2023'
+	
+	path = f"../{id}"
+	if not os.path.isdir(path):
+		os.mkdir(path)
+
+	target = path+'/outfiles'
+	if not os.path.isdir(target):
+		os.mkdir(target)
+
+	groups = 3
+	response,header = getWcif(id)
+	data = json.loads(response.content)
+	mCompetitorInfo = competitorBasicInfo(data)[0]
+	longname = data['name']
+	events = [event['id'] for event in data['events']]
+	getRegList(mCompetitorInfo,f'{target}/{id}CheckinList.pdf')
+
+	competitors = []
+	
+	with open(f"{path}/competitorlist.txt") as f:
+		for line in f:
+			competitors.append(line.split('\t')[0])
+	lc = math.ceil(len(competitors)/groups)
+	
+
+	with open(f'{path}/tempcsvrust.csv','w') as f:
+		f.write(f"Name,Id,{','.join(events)}\n")
+		for i in range(groups-1,-1,-1):
+			# print(i)
+			for j in range(i*lc,min(lc*(i+1),len(competitors))):
+				# print(j)
+				c = competitors[j]
+				eventstring = f"{c},{mCompetitorInfo[c].id}"
+				se = set(mCompetitorInfo[c].events)
+				for event in events:
+					if event in se:
+						eventstring += f",{groups-i};{(j+1)- i*lc}"
+					else:
+						eventstring += ','
+				print(eventstring)
+				# exit()
+				f.write(f"{eventstring}\n")
+	
+	os.chdir("WCA_Scorecards")
+	os.system(f"cargo run --release -- --sort-by-name '{longname}' csv ../{path}/tempcsvrust.csv")
+	filenameToMove = "".join(longname.split(' '))
+	os.system(f'mv {filenameToMove}_scorecards.pdf ../{target}/{filenameToMove}Scorecards.pdf')
+	
+
+# deleteR2AnkerCleanup()
 main()
+
+# hdcfilegroups()
