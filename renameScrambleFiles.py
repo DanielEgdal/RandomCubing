@@ -1,6 +1,7 @@
 ##################
 # CHANGE THIS ONLY
-compid = 'AarhusSpring2023'
+compid = 'RoskildebyNight2023'
+dirr = 'RbN2023' # This is the relative path (on your local PC) to where you have unpacked the initial ZIP from tnoodle.
 ##################
 
 import os
@@ -47,6 +48,8 @@ def get_file_name(event:str,round:str,attempt=None,group=None):
     
 def get_final_map(sortedRounds:list[tuple[str,str]], scrambleSetsPerRound:dict):
     finalmap = {}
+    codes = parse_passcodes()
+    codes_ordered = []
     o = get_prepend_size(sortedRounds,scrambleSetsPerRound)
     count = 0
     for _,e in sortedRounds:
@@ -63,19 +66,43 @@ def get_final_map(sortedRounds:list[tuple[str,str]], scrambleSetsPerRound:dict):
             for i in range(1,groupSize+1):
                 filename = get_file_name(event,roundNum,attempt,str(i))
                 finalmap[filename] = format_prepend(filename,count,o).replace(' ','_')
+                code_dict_name = filename.split('.')[0]
+                codes_ordered.append((code_dict_name,codes[code_dict_name]))
                 count += 1
         else:
             filename = get_file_name(event,roundNum,attempt,None)
-
+            code_dict_name = filename.split('.')[0]
+            codes_ordered.append((code_dict_name,codes[code_dict_name]))
             finalmap[filename] = format_prepend(filename,count,o).replace(' ','_')
             count += 1
         
-    return finalmap
+    return finalmap,codes_ordered
 
-name_map = get_final_map(sortedRounds,scrambleSetsPerRound)
+def parse_passcodes():
+    c = 0
+    codes = {}
+    with open(passcodes) as f:
+        
+        for line in f:
+            if c <= 8:
+                c+=1 
+                continue
+            sett, code = tuple(line.strip().split(':'))
+            codes[sett] = code
+    return codes
 
-zip_file_name = f'{comp_name} - Computer Display PDFs.zip'
-new_folder_name = f'{compid}SortedPdfs'
+
+
+passcodes = f'{dirr}/{comp_name} - Computer Display PDF Passcodes - SECRET.txt'
+new_passcodes = f'{dirr}/{comp_name}PasscodesSorted.txt'
+zip_file_name = f'{dirr}/{comp_name} - Computer Display PDFs.zip'
+new_folder_name = f'{dirr}/{compid}SortedPdfs'
+
+name_map,codes_ordered = get_final_map(sortedRounds,scrambleSetsPerRound)
+
+with open(new_passcodes,'w') as f:
+    for group,code in codes_ordered:
+        f.write(f"{group}: {code}\n")
 
 with zipfile.ZipFile(zip_file_name, "r") as zip_file:
 
